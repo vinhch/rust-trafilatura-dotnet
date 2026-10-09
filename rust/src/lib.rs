@@ -6,10 +6,12 @@
 //! - `engine`: core invocation and response assembly.
 //!
 //! The exported symbols (`rt_extract`, `rt_free`, `rt_version` and the `test-hooks`-gated test
-//! hooks) and the crate's only `unsafe` code belong in this file. Each export validates its
-//! out-parameters and the size of its inputs before reading or writing anything, and runs its body
-//! behind a panic boundary, so a panic becomes return code 3 with a `Panic` envelope instead of
-//! unwinding into the host process.
+//! hooks) and the library's `unsafe` code belong in this file: pointer dereference, the `Vec`
+//! reconstruction in `rt_free` and the `catch_unwind` boundary. A caller opens an `unsafe` block at
+//! the call site, because an `unsafe extern "C"` function cannot be called from safe code. Each
+//! export validates its out-parameters and the size of its inputs before reading or writing
+//! anything, and runs its body behind a panic boundary, so a panic becomes return code 3 with a
+//! `Panic` envelope instead of unwinding into the host process.
 //!
 //! A panic hook installed on the first export call keeps the default hook's stderr output out of
 //! the host process, because a library inside a .NET host must not write there.
@@ -64,6 +66,15 @@ static MAX_HEADER_BYTES: OnceLock<usize> = OnceLock::new();
 
 /// Set once the stderr-silencing panic hook is installed.
 static PANIC_HOOK: OnceLock<()> = OnceLock::new();
+
+/// The process-wide allocator, on by default.
+///
+/// The published throughput comes from mimalloc, and the core crate declares it only in its own
+/// binary and example, so a cdylib built from this crate would otherwise fall back to the system
+/// allocator. `default-features = false` drops the feature with the dependency (spec section 9).
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// Output buffers handed to the caller and not yet released, for the `test-hooks` allocation tests.
 #[cfg(feature = "test-hooks")]
