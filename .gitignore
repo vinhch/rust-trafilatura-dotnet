@@ -429,3 +429,6 @@ target/
 # scripts/release.{ps1,sh}; never committed. The ** prefix is required: a pattern
 # containing / is anchored at the repository root, which would miss the nested path.
 **/runtimes/*/native/
+
+# Local scratch notes and drafts; never committed or packaged.
+/.work/
