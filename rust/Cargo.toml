@@ -1,0 +1,23 @@
+[package]
+name = "rust-trafilatura-ffi"
+version = "2.2.8"
+edition = "2021"
+rust-version = "1.98.1"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rust = { package = "rust-trafilatura", version = "=2.2.8", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
+mimalloc = { version = "0.1", optional = true }
+
+[features]
+default = ["mimalloc"]
+test-hooks = []
+
+[profile.release]
+lto = "thin"
