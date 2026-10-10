@@ -7,6 +7,13 @@ for this page, on the host and date the page records, at that commit; a number t
 re-measured says where it came from instead of being presented as fresh. A criterion this host cannot
 run names the CI job that owns it and says plainly that nothing has verified it.
 
+Corrections made after those runs, on the current branch head: the four native tests this page listed
+as unverified, because `scripts/test.*` passed no feature flag at the time, now run in a second
+`cargo test --locked --features test-hooks` pass; the per-asset managed test count moved from 62 to 63
+with the test pass A added for a version read that fails; and the package listing in section 4 is
+recorded from the `.nupkg` currently in `artifacts/` rather than from the pack those runs made. Those
+corrections are marked where they appear; the rest of the page still describes the runs listed above.
+
 ## Host and date
 
 | | |
@@ -22,13 +29,16 @@ run names the CI job that owns it and says plainly that nothing has verified it.
 
 Verified on this host:
 
-- Criterion 1, Windows half: `scripts/test.ps1` exits 0 and `dotnet test` passes 62 tests per asset,
-  on `net8.0` and on `net10.0`.
+- Criterion 1, Windows half: `scripts/test.ps1` exits 0, the Rust suite passes 63 tests without the
+  `test-hooks` feature and 67 with it, and `dotnet test` passes 63 tests per asset, on `net8.0` and on
+  `net10.0`. The two Rust counts and the per-asset count were re-measured at the branch head; the
+  section 1 transcript below is the run recorded above, whose per-asset count was 62.
 - Criterion 2: the Rust parity test passes for all 11 inline fixtures against the core crate.
 - Criterion 3: `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` are clean,
   and the core-checkout build leaves that checkout's `git status --porcelain` empty.
 - Criterion 4, `win-x64` half: the packed `.nupkg` carries the staged RID, the three license files
-  and both managed assets, asserted by `Package_Contains_AllRidsAndLicenses` on both assets.
+  and both managed assets, asserted by `Package_Contains_AllRidsAndLicenses` on both assets. The entry
+  listing in section 4 is the `.nupkg` in `artifacts/`, packed from `eaf3625`.
 - Criterion 5: both 1,000-call tests pass, one on each side.
 - Criterion 6: the recorded P1 depth is reproduced at this commit and the stack policy matches it.
 - Criterion 7: the freshly packed package installs from a local source into a scratch console app
@@ -44,16 +54,21 @@ Verified by CI only, and nothing has run it yet:
 
 Not verified by anything:
 
-- Four committed Rust tests — the three in `rust/tests/allocation.rs` and `panic_is_caught` in
-  `rust/tests/abi_hardening.rs`. They are behind `--features test-hooks`, and `scripts/test.*` runs
-  `cargo test --locked` without it, so neither the scripts nor `ci.yml`'s `test` job executes them.
-  Owner: Task 10, which owns `scripts/test.*` and where the plan's ruling R11 placed that flag.
 - Probe P3 (the Linux artifacts' required `GLIBC_*` versions, spec section 13) — it needs the
   `linux-x64` artifact from `bindings.yml`'s `native` job and `readelf --version-info`. Owner: the
   plan's Task 12 P3 step, still unchecked.
 - Both workflows' own execution: matrix expansion, `needs`/`if` wiring, the artifact API, the
   provenance attestation, the `nuget` environment's reviewer and Dependabot's behaviour. No workflow
   run is recorded in this checkout and none was read for this page.
+
+The four native tests that no gate ran when this page was written are now executed: `scripts/test.ps1`
+and `scripts/test.sh` run `cargo test --locked --features test-hooks` after the default pass, which
+takes the Rust suite from 63 tests to 67. The three in `rust/tests/allocation.rs` and `panic_is_caught`
+in `rust/tests/abi_hardening.rs` are behind that feature, and without the second pass
+`rust/tests/allocation.rs`, gated whole, reports `running 0 tests`. The allocation counter's atomicity
+test is one of the three, so `concurrent_extract_and_free_returns_the_counter_to_baseline` runs in the
+default gate today; what keeps the counter honest on the shipped library is that
+`scripts/release.*` refuses a staged artifact exporting either `test-hooks` symbol.
 
 ## 1. `dotnet test` green on `windows-latest` and `ubuntu-latest`
 
@@ -68,20 +83,24 @@ build.ps1: stamp ok      D:\codes\rust-trafilatura-dotnet\dotnet\src\RustTrafila
 test.ps1: cargo fmt --check
 test.ps1: cargo clippy --locked --all-targets -- -D warnings
 test.ps1: cargo test --locked
+test.ps1: cargo test --locked --features test-hooks
 test.ps1: dotnet build -c Release
 Build succeeded.
     0 Warning(s)
     0 Error(s)
 test.ps1: dotnet test -c Release (Package category excluded)
-Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 3 s - RustTrafilatura.Tests.dll (net8.0)
-Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 3 s - RustTrafilatura.Tests.dll (net10.0)
+Passed!  - Failed:     0, Passed:    63, Skipped:     0, Total:    63, Duration: 3 s - RustTrafilatura.Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    63, Skipped:     0, Total:    63, Duration: 3 s - RustTrafilatura.Tests.dll (net10.0)
 test.ps1: Rust and C# suites passed
 ```
 
-What the local run covers: both target frameworks, one test assembly each, 62 tests per asset with
-the `Package` category excluded; the same command ran the 63-test Rust suite and the staged-library
-stamp check first. The managed assembly carries one further test, the `Category=Package` one, which
-the release path runs (criterion 4).
+What the local run covers: both target frameworks, one test assembly each, 63 tests per asset with
+the `Package` category excluded; the same command ran the 63-test Rust suite, the second
+`--features test-hooks` pass over its 67 tests, and the staged-library stamp check first. The managed
+assembly carries one further test, the `Category=Package` one, which the release path runs
+(criterion 4). The per-asset count was 62 in the run this section transcribes and is 63 at the branch
+head; the extra test is the version-read one pass A added, and the two Rust commands are those the
+scripts run today.
 
 Host and date: this host, 2026-10-10.
 
@@ -181,24 +200,34 @@ Passed!  - Failed:     0, Passed:    1, Skipped:     0, Total:     1, Duration: 
 Passed!  - Failed:     0, Passed:    1, Skipped:     0, Total:     1, Duration: 26 ms - RustTrafilatura.Tests.dll (net10.0)
 ```
 
-What the local package contains, byte for byte — every entry of the 11,835,138-byte archive, with its
-sha256 prefix:
+What the local package contains, byte for byte — every entry of the 13-entry archive, with its
+uncompressed size and its sha256 prefix:
 
 ```text
     size  sha256[:16]        entry
      482  5A9880A593D931C5   _rels/.rels
      786  BCE3076195C9C127   package/services/metadata/core-properties/nuget.psmdcp
-    1024  262522A701A295D5   RustTrafilatura.nuspec
+     812  C5DED603246EAE92   [Content_Types].xml
+    1024  C42E4E5FDFE1248F   RustTrafilatura.nuspec
     1072  D6DC6E3F1D3793E4   LICENSE-READABILITY-ENCODING
     1453  911F8F5782931320   LICENSE-GO.txt
    11357  C71D239DF91726FC   LICENSE
-   18829  C1B817871EC4987F   README.md
-   53651  4713AE3502096818   lib/net10.0/RustTrafilatura.xml
-   55154  A2F352C286FEED2C   lib/net8.0/RustTrafilatura.xml
-   66560  A1CBF0F20CCA3FB7   lib/net8.0/RustTrafilatura.dll
-   71680  27EEC1FCE0AC30DA   lib/net10.0/RustTrafilatura.dll
+   19117  AC360AF2EC411E4A   README.md
+   56229  88999BAD2ABB84D6   lib/net10.0/RustTrafilatura.xml
+   57732  DA8D805BB7FFBC73   lib/net8.0/RustTrafilatura.xml
+   66560  EE06A6744D9CE5D8   lib/net8.0/RustTrafilatura.dll
+   71680  DABCC98815325AE4   lib/net10.0/RustTrafilatura.dll
 24911360  3CC41915569C4068   runtimes/win-x64/native/rust_trafilatura_ffi.dll
 ```
+
+This listing is one of the corrections made after the recorded run: it is read from the `.nupkg` in
+`artifacts/` (11,836,439 bytes), whose nuspec names `eaf3625` as the commit it was packed from.
+`[Content_Types].xml` is the entry the recorded listing left out — every archive NuGet writes carries
+one — and seven entries differ from that listing's values for the same path: the nuspec, the two XML
+documentation files, the two managed assemblies and the README, which grew after the recorded pack.
+The staged native library and the three license files are the bytes that listing recorded, so the
+recorded archive size and the entry sizes beside it describe a pack that is no longer the one in
+`artifacts/`.
 
 Four of the five RID paths are absent because only `win-x64` is staged here. The three license files
 are the core tag's blobs byte for byte, and the native library in the package is the staged file byte
