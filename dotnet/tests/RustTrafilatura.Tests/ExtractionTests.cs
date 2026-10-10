@@ -25,7 +25,7 @@ public sealed class ExtractionTests
         using var version = JsonDocument.Parse(Extractor.AbiVersion);
 
         Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
-        Assert.Equal("2.2.8", version.RootElement.GetProperty("crate").GetString());
+        Assert.Equal("0.0.1", version.RootElement.GetProperty("crate").GetString());
     }
 
     /// <summary>

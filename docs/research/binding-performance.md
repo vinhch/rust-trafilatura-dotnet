@@ -249,6 +249,12 @@ caller whose bytes sit behind a pointer. Both `ExtractMany` overloads are kept a
 is added, because a `Memory<byte>` can outlive the frame a span cannot. Rank 1's extra reach is what
 this trades away, and the smaller byte surface is what it buys.
 
+Later revised. The surface shipped as rank 1 after all: `ExtractFromBytes(ReadOnlyMemory<byte>)` for
+the memory-backed shapes and `ExtractFromSpan(ReadOnlySpan<byte>)` for the rest, into one private
+`Extract(ReadOnlySpan<byte>, ExtractionOptions?)`, and `UnmanagedMemory` is gone. The adapter was
+buying back the reach rank 3 gives up, at the cost of a public `unsafe` signature and a view that does
+not keep its buffer alive; a span entry point covers the same bytes with neither.
+
 Rank 1, as signatures (not the adopted shape):
 
 ```csharp

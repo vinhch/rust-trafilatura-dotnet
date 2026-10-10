@@ -26,7 +26,7 @@ public sealed class AbiContractTests
     public void Abi_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":2,"schemaVersion":1,"crate":"2.2.8"}"""));
+            Extractor.CheckContract("""{"abi":2,"schemaVersion":1,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(2, mismatch.ActualAbi);
@@ -42,7 +42,7 @@ public sealed class AbiContractTests
     public void Schema_Version_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":1,"schemaVersion":2,"crate":"2.2.8"}"""));
+            Extractor.CheckContract("""{"abi":1,"schemaVersion":2,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(1, mismatch.ActualAbi);
@@ -58,7 +58,7 @@ public sealed class AbiContractTests
     public void Both_Values_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":2,"schemaVersion":3,"crate":"2.2.8"}"""));
+            Extractor.CheckContract("""{"abi":2,"schemaVersion":3,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(2, mismatch.ActualAbi);
@@ -88,7 +88,7 @@ public sealed class AbiContractTests
         string[] documents =
         [
             "not json",
-            """{"crate":"2.2.8"}""",
+            """{"crate":"0.0.1"}""",
             """{"abi":"1","schemaVersion":"1"}""",
         ];
 

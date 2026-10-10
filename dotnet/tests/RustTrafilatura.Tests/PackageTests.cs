@@ -22,9 +22,21 @@ namespace RustTrafilatura.Tests;
 [Trait("Category", "Package")]
 public sealed class PackageTests
 {
-    private const string PackageVersion = "2.2.8";
+    /// <summary>
+    /// The archive the release scripts pack. The version is read from the package project rather than
+    /// repeated here: a copy of the number goes stale on the next version bump, and this test would
+    /// then look for an archive nobody packed.
+    /// </summary>
+    private static string PackagePath(string root) =>
+        Path.Combine(root, "artifacts", "RustTrafilatura." + PackageVersion(root) + ".nupkg");
 
-    private const string PackageRelativePath = "artifacts/RustTrafilatura." + PackageVersion + ".nupkg";
+    private static string PackageVersion(string root)
+    {
+        var project = Path.Combine(root, "dotnet", "src", "RustTrafilatura", "RustTrafilatura.csproj");
+        var match = Regex.Match(File.ReadAllText(project), @"<Version>(?<version>[^<]+)</Version>");
+        Assert.True(match.Success, $"No <Version> element in {project}, so the packed archive's name cannot be derived.");
+        return match.Groups["version"].Value;
+    }
 
     /// <summary>
     /// The files the package carries at its root beside the two managed assets: this repository's MIT
@@ -67,7 +79,7 @@ public sealed class PackageTests
     public void Package_Contains_AllRidsAndLicenses()
     {
         var root = RepositoryRoot();
-        var package = Path.Combine(root, PackageRelativePath);
+        var package = PackagePath(root);
         Assert.True(
             File.Exists(package),
             $"The package to check is not at {package}. Run pwsh -File scripts/release.ps1 (or bash scripts/release.sh), which packs it and then runs this check.");
@@ -119,7 +131,7 @@ public sealed class PackageTests
     public void Package_Declares_License_As_Mit_Expression()
     {
         var root = RepositoryRoot();
-        var package = Path.Combine(root, PackageRelativePath);
+        var package = PackagePath(root);
         Assert.True(
             File.Exists(package),
             $"The package to check is not at {package}. Run pwsh -File scripts/release.ps1 (or bash scripts/release.sh), which packs it and then runs this check.");

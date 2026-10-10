@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>RustTrafilatura</PackageId>
-    <Version>2.2.8</Version>
+    <Version>0.0.1</Version>
     <Authors>vinhch</Authors>
     <Description>In-process HTML text and metadata extraction for .NET, over the published rust-trafilatura crate and a length-delimited C ABI.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

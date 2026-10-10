@@ -26,13 +26,18 @@ internal static class BytesCallSites
         // The null literal itself, which binds to the memory parameter because it is the only one.
         ExtractionResult fromNullLiteral = Extractor.ExtractFromBytes(null!);
 
-        // Memory of the caller's own, which is the shape the entry point is declared with: no `.Span`
-        // to spell, because the caller does not have to reach a span entry point.
+        // Memory of the caller's own, which is the shape the memory entry point is declared with.
         ReadOnlyMemory<byte> view = page.AsMemory(0, page.Length);
         ExtractionResult fromMemory = Extractor.ExtractFromBytes(view);
         ExtractionResult fromSliceWithOptions = Extractor.ExtractFromBytes(
             view,
             new ExtractionOptions { ResponseFields = ["contentText"] });
+
+        // The span entry point, which is how a buffer no memory view can express arrives: a
+        // `stackalloc` one here, and unmanaged memory in the block below.
+        ExtractionResult fromSpan = Extractor.ExtractFromSpan(page);
+        ExtractionResult fromStackAlloc = Extractor.ExtractFromSpan(stackalloc byte[8]);
+        ExtractionResult fromMemorySpan = Extractor.ExtractFromSpan(view.Span);
 
         // A string stays a string call site.
         ExtractionResult fromString = Extractor.ExtractFromHtml("<p>hi</p>");
@@ -43,16 +48,16 @@ internal static class BytesCallSites
         IReadOnlyList<ExtractionBatchItem> fromMemoryList = Extractor.ExtractMany(
             new List<ReadOnlyMemory<byte>> { view });
 
-        // The pointer entry point: a caller whose bytes are not in a managed array wraps them instead
-        // of copying them, which needs unsafe at the call site.
+        // Unmanaged memory reaches the same entry point as a span rather than through an adapter type,
+        // and the caller keeps ownership of the buffer. Forming the span needs unsafe at the call site.
         unsafe
         {
-            Memory<byte> wrapped = UnmanagedMemory.Wrap(null, 0);
-            ExtractionResult fromUnmanaged = Extractor.ExtractFromBytes(wrapped);
+            byte* pointer = null;
+            ExtractionResult fromUnmanaged = Extractor.ExtractFromSpan(new ReadOnlySpan<byte>(pointer, 0));
             _ = fromUnmanaged;
         }
 
-        _ = (fromArray, fromNullArray, fromNullLiteral, fromMemory, fromSliceWithOptions, fromString);
+        _ = (fromArray, fromNullArray, fromNullLiteral, fromMemory, fromSliceWithOptions, fromSpan, fromStackAlloc, fromMemorySpan, fromString);
         _ = (fromListOfArrays, fromArrayOfArrays, fromMemoryList);
     }
 }

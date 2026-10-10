@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "rust-trafilatura-ffi"
-version = "2.2.8"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "mimalloc",
