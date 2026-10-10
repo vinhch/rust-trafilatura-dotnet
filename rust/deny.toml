@@ -1,5 +1,5 @@
 # Supply-chain policy for the ffi crate, read by the `supply-chain` job in
-# .github/workflows/ci.yml and by a plain `cargo deny check advisories licenses bans` in rust/.
+# .github/workflows/quality.yml and by a plain `cargo deny check advisories licenses bans` in rust/.
 #
 # Its reason for existing is the licenses check: without a config, cargo-deny has no allow-list and
 # refuses every crate that has a license at all. The settings below are the decisions this repository

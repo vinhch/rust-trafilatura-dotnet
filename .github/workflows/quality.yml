@@ -1,8 +1,8 @@
-# The rust-only checks that are not a per-push gate: the whole-crate mutation pass and the round-trip
-# ratio on the weekly run, and the diff-scoped mutation pass plus the same ratio on a pull request that
-# changes rust/. Every job calls a scripts/ file or runs the same tool a developer can run, so a local
-# run and this workflow execute the same sequence. The toolchain pin's comment in ci.yml says why
-# Dependabot cannot move that one.
+# The rust-only checks that are not a per-push gate: the supply-chain check, the whole-crate mutation
+# pass and the round-trip ratio on the weekly run, and the diff-scoped mutation pass plus the same ratio
+# on a pull request that changes rust/. Every job calls a scripts/ file or runs the same tool a developer
+# can run, so a local run and this workflow execute the same sequence. The toolchain pin's comment in
+# ci.yml says why Dependabot cannot move that one.
 name: quality
 
 on:
@@ -10,13 +10,16 @@ on:
     # What the filter keeps out is a measurement rather than a gate, which is why it sits on the
     # trigger. It lists rust/ only: the mutation step fails on an empty diff, and the trigger is what
     # keeps that guard meaning "the range could not be resolved" instead of "this pull request changed
-    # nothing to measure". There is no push trigger, because the mutation step runs on a pull request
-    # or a schedule only, and a push would show its skipped step as a green check that measured nothing.
+    # nothing to measure". There is no push trigger: the mutation step runs on a pull request or a
+    # schedule only, so a push would show its skipped step as a green check that measured nothing, and
+    # this is also what stops bench and core-untouched running on a rust-touching push, which the
+    # single workflow did before this file existed. The weekly run and the next rust-touching pull
+    # request are what cover the merged result instead.
     paths:
       - 'rust/**'
   schedule:
-    # The weekly run is the one nobody is watching: it is where the whole-crate mutation pass and the
-    # round-trip ratio show a slow regression that no single pull request caused.
+    # The weekly run is the one nobody is watching: it is where the whole-crate mutation pass, the
+    # round-trip ratio and the advisory check show a slow change that no single pull request caused.
     - cron: '0 6 * * 1'
 
 permissions:
@@ -118,3 +121,24 @@ jobs:
       - name: Measure the round trip
         shell: bash
         run: scripts/bench.sh
+
+  # The lockfile is committed and does not change between releases, so an advisory published against it
+  # cannot be shown by a pull request: this job's weekly run is what re-checks it. A pull request that
+  # changes rust/ runs it too, where a changed lockfile or deny.toml is what it catches, which is why the
+  # check sits here rather than in ci.yml: it reads only the rust/ tree.
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # `cargo deny` is cargo running cargo-deny from PATH, so the toolchain this job uses is pinned
+      # here rather than taken from the runner image.
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-deny
+      # The committed lockfile and the committed rust/deny.toml are the inputs: a new advisory, a
+      # license outside the allow-list or a banned crate fails here.
+      - name: cargo deny
+        working-directory: rust
+        run: cargo deny check advisories licenses bans

@@ -303,13 +303,26 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 Prerequisites: the .NET SDK, a Rust toolchain, and a checkout of this repository.
 
 ```console
+bash scripts/version.sh    # report the version the crate, the lockfile and the package carry
 bash scripts/build.sh      # stage the host RID's native library
 bash scripts/test.sh       # verify the staged library, then run both suites
 bash scripts/release.sh    # pack artifacts/RustTrafilatura.<version>.nupkg, then check it
 bash scripts/bench.sh      # the round-trip ratio under its budget
 ```
 
-The same four contracts exist as `scripts/*.ps1`, and each one's `--help` lists its flags.
+The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags.
+`version.sh --check` fails when the crate version in `rust/Cargo.toml`, the entry cargo writes into
+`rust/Cargo.lock` and `<Version>` in the package project disagree; `--check --tag vX.Y.Z` also fails
+when that tag does not name the version the sources carry, and `--set X.Y.Z` writes one version into
+all three without committing or tagging.
+
+A release is that one version and one tag: `scripts/version.sh --set X.Y.Z` writes the version into both
+manifests and lets cargo write it into the lockfile, those three files are committed, and then
+`git tag vX.Y.Z` is pushed. Only a tag push starts `.github/workflows/release.yml`, which builds all
+five RIDs, packs the package and publishes it through the `nuget` environment. Every other change is
+verified by `.github/workflows/ci.yml` on push and pull request. Starting the release workflow by hand
+builds and checks a package without publishing it, which is how `main` is checked before a tag exists.
+
 `release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
 staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed
 `.nupkg`, so `test.sh` leaves it out and a bare `dotnet test` includes it: pass

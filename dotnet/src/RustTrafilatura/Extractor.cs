@@ -26,8 +26,8 @@ public static class Extractor
     private static readonly Lazy<ContractVersionMismatchException?> ContractMismatch = new(() => CheckContract(VersionDocument.Value));
 
     /// <summary>
-    /// The version document of the native library, `{"abi":1,"schemaVersion":1,"crate":"0.0.1"}`:
-    /// the ABI it implements, the JSON schema it speaks and the crate version it was built from.
+    /// The version document of the native library: the ABI it implements, the JSON schema it speaks and
+    /// the crate version it was built from, under the keys `abi`, `schemaVersion` and `crate`.
     /// </summary>
     /// <remarks>
     /// The document is what the library says about itself, and this accessor does not compare it: it is

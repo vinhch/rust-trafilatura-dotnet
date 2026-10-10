@@ -57,28 +57,10 @@ public sealed class PackageTests
         _ => null,
     };
 
-    /// <summary>The repository root, found by walking up from the test assembly's own directory.</summary>
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "dotnet", "RustTrafilatura.sln")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            $"No repository root above the test assembly at {AppContext.BaseDirectory}: no directory on the way up holds dotnet/RustTrafilatura.sln.");
-    }
-
     [Fact]
     public void Package_Contains_AllRidsAndLicenses()
     {
-        var root = RepositoryRoot();
+        var root = Repository.Root();
         var package = PackagePath(root);
         Assert.True(
             File.Exists(package),
@@ -130,7 +112,7 @@ public sealed class PackageTests
     [Fact]
     public void Package_Declares_License_As_Mit_Expression()
     {
-        var root = RepositoryRoot();
+        var root = Repository.Root();
         var package = PackagePath(root);
         Assert.True(
             File.Exists(package),

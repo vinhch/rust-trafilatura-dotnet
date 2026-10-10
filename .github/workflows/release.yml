@@ -1,34 +1,71 @@
 # Builds every RID and produces the package. Split from ci.yml by cost: five native builds are minutes
-# each, so nothing here runs the suites. The trigger carries the paths a package is built from, and
-# path filters are not evaluated for pushes of tags, so a tag still reaches every job below; what the
-# filter keeps out is the push and the pull request that cannot change a package, so a documentation
-# change no longer builds five native libraries. Actions are pinned to a commit SHA with their version
-# in a trailing comment; the toolchain pin's comment in ci.yml says why Dependabot cannot move that one.
+# each, so nothing here runs the suites. The trigger is a tag push, which is the only event that can
+# publish: no push to a branch and no pull request starts this workflow, so the package is built where it
+# is released. A manual start runs the same pipeline without the two tag-gated steps, which is how a
+# package is checked against main before a tag exists. Actions are pinned to a commit SHA with their
+# version in a trailing comment; the toolchain pin's comment in ci.yml says why Dependabot cannot move
+# that one.
 name: release
 
 on:
   push:
-    # The same list on both events, so a new packaging input is added once.
-    paths: &package_paths
-      - 'dotnet/**'
-      - 'rust/**'
-      - 'scripts/build.sh'
-      - 'scripts/build.ps1'
-      - 'scripts/release.sh'
-      - 'scripts/release.ps1'
-      - 'README.md'
-      - 'LICENSE'
-      - 'THIRD-PARTY-NOTICES.md'
-      - '.github/workflows/release.yml'
-  pull_request:
-    paths: *package_paths
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  # The dry run: `native` and `package` build and check the package on the ref that was chosen, and
+  # neither attests nor publishes, because both are gated on a tag push. The optional input is the one
+  # thing a dry run cannot see for itself, the tag the caller intends to create: it is what the sources
+  # are checked against when the run has no tag of its own, and it has to agree with the ref when it has
+  # one.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag this run is a rehearsal for, e.g. v1.0.0 (optional)'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  # Before the five native builds: a version the sources disagree on, or a tag that does not name them,
+  # is answered in seconds rather than after five runners have built a package nobody can publish. A
+  # deleted tag fires the same push event with nothing to build, so it is refused here.
+  guard:
+    name: guard
+    if: github.event.deleted != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the version the sources carry
+        shell: bash
+        # The ref and the input are read from the environment rather than interpolated into the script: a
+        # ref or an input carrying a quote would otherwise break out of the quoting it lands in.
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # The ref names the tag GitHub started this run for, and the input names the tag a caller
+          # intends to create. A run on a branch has no tag of its own, so the input is what is checked
+          # there; a run on a tag is about that tag, and an input naming a different one is refused
+          # rather than checked in its place.
+          tag="$INPUT_TAG"
+          if [ "$REF_TYPE" = "tag" ]; then
+            if [ -n "$tag" ] && [ "$tag" != "$REF_NAME" ]; then
+              echo "the input tag is $tag while this run is for $REF_NAME, so the check would be about a tag this run is not releasing" >&2
+              exit 1
+            fi
+            tag="$REF_NAME"
+          fi
+          if [ -n "$tag" ]; then
+            scripts/version.sh --check --tag "$tag"
+          else
+            scripts/version.sh --check
+          fi
+
   native:
     name: native (${{ matrix.rid }})
+    needs: guard
     strategy:
       # Every RID is its own artifact and its own platform; one failing leg must not hide the others.
       fail-fast: false
@@ -118,21 +155,20 @@ jobs:
           path: artifacts/*.nupkg
           if-no-files-found: error
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        # A pull request from a fork gets a read-only token whatever this job's permissions say, so
-        # attesting there would fail a step that no contributor can fix and would turn an unrelated
-        # contribution red. What the attestation covers is the release artifact, so it runs on the
-        # pushes and tags that produce one; the `publish` job publishes the exact bytes this step
-        # attested.
-        if: github.event_name != 'pull_request'
+        # What the attestation covers is the release artifact, so it runs only on a tag push, which is
+        # the only run that can publish: a manual start builds and checks a package nobody releases. The
+        # `publish` job publishes the exact bytes this step attested.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         with:
           subject-path: artifacts/*.nupkg
 
   publish:
     name: publish
-    # Tag-gated: no non-tag ref reaches this job, and no workflow pushes a version by itself. The
-    # `nuget` environment's required reviewer is a repository setting; naming the environment here is
-    # what routes the run through it.
-    if: startsWith(github.ref, 'refs/tags/')
+    # Gated on the event and the ref together: only a tag push reaches this job, so a manual start on a
+    # tag is a rehearsal rather than a release, and no workflow pushes a version by itself. Re-running the
+    # failed jobs of that tag push is what retries a publish. The `nuget` environment's required reviewer
+    # is a repository setting; naming the environment here is what routes the run through it.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: package
     runs-on: ubuntu-latest
     environment: nuget

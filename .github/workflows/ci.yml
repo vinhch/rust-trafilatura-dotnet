@@ -1,6 +1,6 @@
-# Fast feedback on every push and pull request: the two-platform suite, the supply-chain check and the
-# AOT publish. Every job either calls a scripts/ file that a developer can run, or runs the same tool,
-# so a local run and this workflow execute the same sequence. The rust-only checks and the weekly
+# Fast feedback on every push and pull request: the two-platform suite and the AOT publish. Every job
+# either calls a scripts/ file that a developer can run, or runs the same tool, so a local run and this
+# workflow execute the same sequence. The rust-only checks, the supply-chain check and the weekly
 # measurements are in quality.yml, and the package build is in release.yml. Actions are pinned to a
 # commit SHA with their version in a trailing comment, and .github/dependabot.yml moves the ones whose
 # repository tags a release. The dtolnay/rust-toolchain pin is the tip of that repository's `1.98.1`
@@ -35,6 +35,12 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.401
+      # The crate version, the lockfile entry and the package version are one number in three files, and
+      # this is the only check on a push or a pull request that compares them. Files only, so it runs
+      # before anything is staged.
+      - name: Check the version the sources carry
+        shell: bash
+        run: scripts/version.sh --check
       # test.sh runs the Rust suite (fmt check, clippy with -D warnings, cargo test, then a second
       # cargo test with --features test-hooks, which the default pass compiles out) and the C# suite
       # in one pass, so the host RID's library has to exist first: its stamp check refuses to run the
@@ -45,23 +51,6 @@ jobs:
       - name: Run the Rust and C# suites
         shell: bash
         run: scripts/test.sh
-
-  supply-chain:
-    name: supply-chain
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # `cargo deny` is cargo running cargo-deny from PATH, so the toolchain this job uses is pinned
-      # here rather than taken from the runner image.
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
-        with:
-          tool: cargo-deny
-      # The committed lockfile and the committed rust/deny.toml are the inputs: a new advisory, a
-      # license outside the allow-list or a banned crate fails here.
-      - name: cargo deny
-        working-directory: rust
-        run: cargo deny check advisories licenses bans
 
   # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
   # The job is named after the assertion it carries, so the check that carries the claim is the one a

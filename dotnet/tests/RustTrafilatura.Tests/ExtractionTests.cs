@@ -25,7 +25,10 @@ public sealed class ExtractionTests
         using var version = JsonDocument.Parse(Extractor.AbiVersion);
 
         Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
-        Assert.Equal("0.0.1", version.RootElement.GetProperty("crate").GetString());
+        // Read from rust/Cargo.toml rather than repeated here: the assertion is that the loaded library
+        // was built from the sources in this checkout, and a copy of the number would go stale on the
+        // next version bump instead of failing.
+        Assert.Equal(Repository.CrateVersion(), version.RootElement.GetProperty("crate").GetString());
     }
 
     /// <summary>
