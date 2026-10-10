@@ -256,7 +256,11 @@ public static class Extractor
     /// carries the kind, the message and any context that kind has; a response that cannot be read
     /// still produces an exception rather than a JSON error nobody asked for.
     /// </summary>
-    private static TrafilaturaException ReadFailure(int code, string response)
+    /// <remarks>
+    /// Internal so the mapping is assertable for a kind no build of this ABI emits yet; the caller
+    /// receives the exception this returns, so its fallbacks matter as much as its kind switch.
+    /// </remarks>
+    internal static TrafilaturaException ReadFailure(int code, string response)
     {
         try
         {
