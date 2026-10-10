@@ -252,6 +252,9 @@ public sealed class ExtractionBatchItem
     /// <summary>Why this page failed, or null when it did not.</summary>
     public TrafilaturaException? Error { get; init; }
 
-    /// <summary>Whether this page produced a result.</summary>
-    public bool Succeeded => Error is null;
+    /// <summary>
+    /// Whether this page produced a result: true only when <see cref="Result"/> is set and
+    /// <see cref="Error"/> is not, because a default instance has neither.
+    /// </summary>
+    public bool Succeeded => Result is not null && Error is null;
 }

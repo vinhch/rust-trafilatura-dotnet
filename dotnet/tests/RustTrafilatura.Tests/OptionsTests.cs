@@ -104,18 +104,24 @@ public sealed class OptionsTests
     }
 
     /// <summary>
-    /// `inputEncoding` is a header key that reaches the decoder: the payload is still raw bytes, so
-    /// what the caller names here is what decodes them.
+    /// `inputEncoding` is a header key that reaches the decoder, so a label contradicting detection
+    /// changes the text. These are the article's UTF-8 bytes read as windows-1252: U+00AD and U+0308
+    /// are one byte each there and two bytes as UTF-8, so the core neither composes the NFD umlaut nor
+    /// drops the soft hyphen, and the result says so. Detection would have picked UTF-8 and produced
+    /// the other result, which is why the two have to differ before either is read.
     /// </summary>
     [Fact]
     public void Input_Encoding_Names_The_Decoder()
     {
-        var result = Extractor.ExtractFromBytes(
-            Fixtures.Windows1252,
+        var detected = Extractor.ExtractFromBytes(Fixtures.ArticleWithSoftHyphens);
+        var declared = Extractor.ExtractFromBytes(
+            Fixtures.ArticleWithSoftHyphens,
             new ExtractionOptions { InputEncoding = "windows-1252" });
 
-        Assert.Contains("Caf\u00E9 review", result.ContentText);
-        Assert.Contains("Z\u00FCrich", result.ContentText);
+        Assert.NotEqual(detected.ContentText, declared.ContentText);
+        Assert.Contains("research", detected.ContentText);
+        Assert.DoesNotContain("research", declared.ContentText);
+        Assert.Contains("re\u00C2", declared.ContentText);
     }
 
     /// <summary>`url` is a header key that reaches the metadata, and the core validates it.</summary>

@@ -14,16 +14,44 @@ public sealed class BatchTests
     [Fact]
     public void ExtractMany_Returns_Results_In_Input_Order()
     {
-        // The pages do not all answer the same thing: the article carries a date, its soft-hyphen
-        // variant carries the same one, an article without a date carries none, and the empty page is
-        // rejected. An item swapped with its neighbour would land on a different answer.
-        var batch = Extractor.ExtractMany([Fixtures.Article, Fixtures.NoDate, Empty, Fixtures.ArticleWithSoftHyphens]);
+        // Every index gets a marker no other index has: its own URL, and its own title, both of which
+        // come back in that page's metadata. One page in the middle is empty, so the batch is not
+        // uniform either. An item swapped with its neighbour would report the other page's marker.
+        var pages = new[] { Marked(0), Marked(1), Empty, Marked(3) };
+        var batch = Extractor.ExtractMany(
+            pages,
+            new ExtractionOptions { ResponseFields = ["metadata", "contentText"] });
 
         Assert.Equal(4, batch.Count);
-        Assert.Equal(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero), batch[0].Result!.Metadata!.Date);
-        Assert.Null(batch[1].Result!.Metadata!.Date);
-        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, batch[2].Error!.Kind);
-        Assert.Equal(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero), batch[3].Result!.Metadata!.Date);
+        for (var index = 0; index < pages.Length; index++)
+        {
+            if (index == 2)
+            {
+                Assert.False(batch[index].Succeeded);
+                Assert.Equal(TrafilaturaErrorKind.OutputTooShort, batch[index].Error!.Kind);
+                continue;
+            }
+
+            Assert.Equal($"https://example.org/article?page={index}", batch[index].Result!.Metadata!.Url);
+            Assert.Equal($"Page {index} marker", batch[index].Result!.Metadata!.Title);
+        }
+    }
+
+    /// <summary>
+    /// One page whose declared URL and title both name its index, so an item can be traced back to the
+    /// input it came from. The page itself is the same article: only the markers differ.
+    /// </summary>
+    private static byte[] Marked(int index)
+    {
+        var html = System.Text.Encoding.UTF8.GetString(Fixtures.Article)
+            .Replace("<title>Research results</title>", $"<title>Page {index} marker</title>", StringComparison.Ordinal)
+            .Replace("<h1>Research results</h1>", $"<h1>Page {index} marker</h1>", StringComparison.Ordinal)
+            .Replace(
+                "<meta property=\"og:site_name\"",
+                $"<link rel=\"canonical\" href=\"https://example.org/article?page={index}\"><meta property=\"og:site_name\"",
+                StringComparison.Ordinal);
+
+        return System.Text.Encoding.UTF8.GetBytes(html);
     }
 
     [Fact]
@@ -80,6 +108,45 @@ public sealed class BatchTests
         Assert.True(batch[0].Succeeded);
         Assert.Equal(TrafilaturaErrorKind.OutputTooShort, batch[1].Error!.Kind);
         Assert.True(batch[2].Succeeded);
+    }
+
+    /// <summary>
+    /// The rule for what a batch throws when the extraction itself cannot run: one collected failure
+    /// is unwrapped, so a single-page failure survives as itself, and anything else stays the loop's
+    /// aggregate because no single failure can stand for it. Driven directly rather than through a
+    /// native library that fails to load, because a normal run has that library in place and a test
+    /// that skips itself there asserts nothing.
+    /// </summary>
+    [Fact]
+    public void Batch_Failure_Is_Unwrapped_Only_When_It_Is_Alone()
+    {
+        var failure = new DllNotFoundException("test");
+
+        Assert.Same(failure, Extractor.NormalizeBatchFailure(new AggregateException(failure)));
+
+        var two = new AggregateException(new DllNotFoundException("test"), new DllNotFoundException("test"));
+        Assert.Same(two, Extractor.NormalizeBatchFailure(two));
+
+        var none = new AggregateException();
+        Assert.Same(none, Extractor.NormalizeBatchFailure(none));
+    }
+
+    /// <summary>
+    /// <see cref="ExtractionBatchItem.Succeeded"/> is the "exactly one of the two" rule, so a default
+    /// instance -- neither a result nor an error -- does not report success.
+    /// </summary>
+    [Fact]
+    public void Batch_Item_Is_Not_Successful_Without_A_Result()
+    {
+        Assert.False(new ExtractionBatchItem().Succeeded);
+        Assert.False(new ExtractionBatchItem { Error = new TrafilaturaException(TrafilaturaErrorKind.Io, "test") }.Succeeded);
+        Assert.True(new ExtractionBatchItem { Result = new ExtractionResult() }.Succeeded);
+        Assert.False(
+            new ExtractionBatchItem
+            {
+                Result = new ExtractionResult(),
+                Error = new TrafilaturaException(TrafilaturaErrorKind.Io, "test"),
+            }.Succeeded);
     }
 
     /// <summary>The sequential counterpart of one batch item, for comparing the two paths.</summary>

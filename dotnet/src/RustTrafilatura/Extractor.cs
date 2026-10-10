@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -74,12 +75,29 @@ public static class Extractor
     /// <param name="maxDegreeOfParallelism">
     /// How many extractions may run at once; 0 means <see cref="Environment.ProcessorCount"/>.
     /// </param>
+    /// <remarks>
+    /// What a batch throws when the extraction itself cannot run depends on how many failures the
+    /// parallel loop collected. With exactly one it throws that failure, so a batch reports a missing
+    /// or stale native library as the same exception a single-page call reports. With more than one
+    /// it throws the <see cref="AggregateException"/> the loop built, because none of them can stand
+    /// for the others, and a batch of two pages against one missing library is enough to reach that.
+    /// A page that fails to extract is neither: it becomes its item's
+    /// <see cref="ExtractionBatchItem.Error"/> and the call returns normally.
+    /// </remarks>
     /// <exception cref="ArgumentException">
     /// <paramref name="pages"/> is null or empty, or one of its elements is null.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDegreeOfParallelism"/> is negative.</exception>
-    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
-    /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
+    /// <exception cref="AggregateException">More than one failure was collected, so none of them can stand for the others.</exception>
+    /// <exception cref="DllNotFoundException">
+    /// The native library is missing and it was the only failure collected, so the batch reports it
+    /// as itself. Several pages against the same missing library report it inside an
+    /// <see cref="AggregateException"/> instead.
+    /// </exception>
+    /// <exception cref="EntryPointNotFoundException">
+    /// The library that loaded is stale or foreign, does not export this ABI, and was the only
+    /// failure collected. As with the missing library, several pages report it aggregated.
+    /// </exception>
     public static IReadOnlyList<ExtractionBatchItem> ExtractMany(
         IReadOnlyList<byte[]> pages,
         ExtractionOptions? options = null,
@@ -108,29 +126,52 @@ public static class Extractor
         // Written by index rather than appended: a concurrent collection would make the input order
         // depend on which page finished first, and order is part of this helper's contract.
         var items = new ExtractionBatchItem[pages.Count];
-        Parallel.For(
-            0,
-            pages.Count,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = maxDegreeOfParallelism == 0
-                    ? Environment.ProcessorCount
-                    : maxDegreeOfParallelism,
-            },
-            index =>
-            {
-                try
+        try
+        {
+            Parallel.For(
+                0,
+                pages.Count,
+                new ParallelOptions
                 {
-                    items[index] = new ExtractionBatchItem { Result = ExtractFromBytes(pages[index], options) };
-                }
-                catch (TrafilaturaException exception)
+                    MaxDegreeOfParallelism = maxDegreeOfParallelism == 0
+                        ? Environment.ProcessorCount
+                        : maxDegreeOfParallelism,
+                },
+                index =>
                 {
-                    items[index] = new ExtractionBatchItem { Error = exception };
-                }
-            });
+                    try
+                    {
+                        items[index] = new ExtractionBatchItem { Result = ExtractFromBytes(pages[index], options) };
+                    }
+                    catch (TrafilaturaException exception)
+                    {
+                        items[index] = new ExtractionBatchItem { Error = exception };
+                    }
+                });
+        }
+        catch (AggregateException exception)
+        {
+            // Unwrapped with ExceptionDispatchInfo so the caller catches the inner exception itself,
+            // stack trace included, instead of the loop's wrapper.
+            ExceptionDispatchInfo.Capture(NormalizeBatchFailure(exception)).Throw();
+        }
 
         return items;
     }
+
+    /// <summary>
+    /// Decides what a batch throws when the parallel loop itself faulted. One collected failure is
+    /// unwrapped, because the loop wrapped it and the caller would otherwise have to look inside; two
+    /// or more stay wrapped, because no single one of them can stand for the others, and so does an
+    /// aggregate with none, which no single failure can replace either.
+    /// </summary>
+    /// <remarks>
+    /// Split out of the catch so the rule is assertable without a native library that fails to load:
+    /// the caller throws what this returns, so returning the aggregate here is what makes a batch
+    /// report an <see cref="AggregateException"/>.
+    /// </remarks>
+    internal static Exception NormalizeBatchFailure(AggregateException exception) =>
+        exception.InnerExceptions.Count == 1 ? exception.InnerExceptions[0] : exception;
 
     /// <summary>
     /// Assembles the request header. `responseFields`, `url` and `inputEncoding` belong at its top
@@ -149,10 +190,16 @@ public static class Extractor
             HeaderJsonOptions);
 
     /// <summary>
-    /// The request header as JSON text, for a caller that needs to see the wire shape itself.
+    /// The request header as JSON, for a caller that needs to see the wire shape itself. The element is
+    /// cloned and the document disposed: the element's own buffers come from a pool and are returned
+    /// when the document is, so keeping the element without the clone would hand back a value that
+    /// dies with it.
     /// </summary>
-    internal static JsonElement BuildHeaderJson(ExtractionOptions? options) =>
-        JsonDocument.Parse(BuildHeader(options)).RootElement;
+    internal static JsonElement BuildHeaderJson(ExtractionOptions? options)
+    {
+        using var document = JsonDocument.Parse(BuildHeader(options));
+        return document.RootElement.Clone();
+    }
 
     private static ExtractionResult ReadResult(int code, string response)
     {
