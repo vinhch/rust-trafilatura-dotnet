@@ -30,8 +30,8 @@ public sealed class ExtractionTests
 
     /// <summary>
     /// The document reports the ABI and the schema this client was built for. `AbiVersion` is the
-    /// library's own claim and nothing compares it, so this is the only place the two numbers are
-    /// pinned: a library that moved either one would otherwise be read with the wrong contract.
+    /// library's own claim, and the first extraction is what compares those two numbers against the
+    /// ones this assembly was compiled for; this test pins the claim they are compared with.
     /// </summary>
     [Fact]
     public void AbiVersion_Reports_The_Shipped_Abi()

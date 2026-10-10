@@ -11,20 +11,34 @@ namespace RustTrafilatura;
 /// </summary>
 public static class Extractor
 {
+    /// <summary>The `abi` and the JSON schema this assembly was compiled for; a library that reports other numbers is read with the wrong contract.</summary>
+    internal const int RequiredAbi = 1;
+
+    /// <summary>The other half of <see cref="RequiredAbi"/>: the schema version of the response this client parses.</summary>
+    internal const int RequiredSchemaVersion = 1;
+
     private static readonly Lazy<string> VersionDocument = new(ReadVersionDocument);
+
+    /// <summary>
+    /// The one contract comparison per process: `Lazy` runs the factory at most once, so no extraction
+    /// after the first calls `rt_version` at all, and null means the library passed.
+    /// </summary>
+    private static readonly Lazy<ContractVersionMismatchException?> ContractMismatch = new(() => CheckContract(VersionDocument.Value));
 
     /// <summary>
     /// The version document of the native library, `{"abi":1,"schemaVersion":1,"crate":"2.2.8"}`:
     /// the ABI it implements, the JSON schema it speaks and the crate version it was built from.
     /// </summary>
     /// <remarks>
-    /// The document is what the library says about itself, and this client does not compare it with
-    /// anything: it reads every response with the schema it was compiled against, so a check here
-    /// could only report a mismatch after the fact. A comparison would catch a library whose `abi` or
-    /// `schemaVersion` differs from the ones this assembly knows, and it would not catch a library that
-    /// reports those numbers while implementing something else, because the document is the library's
-    /// own claim. `crate` is versioned independently of `abi`, so a different crate version is not a
-    /// mismatch.
+    /// The document is what the library says about itself, and this accessor does not compare it: it is
+    /// the path a caller reads to see which library is loaded, `crate` version included, including
+    /// after <see cref="ContractVersionMismatchException"/> reported that `abi` or `schemaVersion`
+    /// differs. The comparison runs on the first call that extracts (see
+    /// <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions)"/>), which can catch a
+    /// library that reports different numbers and cannot catch one that reports these while
+    /// implementing something else, because the document is still only the library's claim. `crate` is
+    /// versioned independently of `abi`, so a different crate version is not a mismatch and is not
+    /// compared.
     /// </remarks>
     public static string AbiVersion => VersionDocument.Value;
 
@@ -40,12 +54,19 @@ public static class Extractor
     /// array becomes, is a valid request that the core itself rejects as too short.
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
+    /// <exception cref="ContractVersionMismatchException">
+    /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for. The
+    /// comparison is made once per process, on the first call that reaches here, and every later call
+    /// throws that same failure until a matching library is loaded.
+    /// </exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
     public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)
     {
+        EnsureContract();
+
         return Interop.Extract(BuildHeader(options), html.Span, ReadResult);
     }
 
@@ -56,6 +77,7 @@ public static class Extractor
     /// surrogate in <paramref name="html"/> becomes U+FFFD before the call.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
+    /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions)"/> makes, since this overload reaches it.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
@@ -93,6 +115,11 @@ public static class Extractor
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDegreeOfParallelism"/> is negative.</exception>
     /// <exception cref="AggregateException">More than one failure was collected, so none of them can stand for the others.</exception>
+    /// <exception cref="ContractVersionMismatchException">
+    /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for, and
+    /// it was the only failure collected. Several pages against the same library report it inside an
+    /// <see cref="AggregateException"/> instead.
+    /// </exception>
     /// <exception cref="DllNotFoundException">
     /// The native library is missing and it was the only failure collected, so the batch reports it
     /// as itself. Several pages against the same missing library report it inside an
@@ -143,6 +170,11 @@ public static class Extractor
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDegreeOfParallelism"/> is negative.</exception>
     /// <exception cref="AggregateException">More than one failure was collected, so none of them can stand for the others.</exception>
+    /// <exception cref="ContractVersionMismatchException">
+    /// The same check <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions)"/> makes,
+    /// reported the same way a missing library is: as itself when it was the only failure collected,
+    /// inside an <see cref="AggregateException"/> when several pages hit it.
+    /// </exception>
     /// <exception cref="DllNotFoundException">
     /// The native library is missing and it was the only failure collected, so the batch reports it
     /// as itself. Several pages against the same missing library report it inside an
@@ -552,6 +584,76 @@ public static class Extractor
     }
 
     /// <summary>
+    /// Refuses to extract against a library whose contract version differs from the one this assembly
+    /// was compiled for. Runs before an extraction rather than from a static constructor or from
+    /// <see cref="AbiVersion"/>: a static constructor failure reaches the caller as
+    /// <see cref="TypeInitializationException"/>, which hides the finding, and the version accessor is
+    /// the path a caller reads to see which library is loaded.
+    /// </summary>
+    /// <remarks>
+    /// This is the first use of the native library, so what it finds is what a caller sees first: a
+    /// missing or foreign library still reports the <see cref="DllNotFoundException"/> or
+    /// <see cref="EntryPointNotFoundException"/> the extraction call used to report, with the same
+    /// diagnostics, because the document is read through the same <see cref="Interop"/> calls. `Lazy`
+    /// caches that first outcome, mismatch or failure, so later calls report it without loading the
+    /// library again, and a mismatch is the same exception instance every time.
+    /// </remarks>
+    private static void EnsureContract()
+    {
+        // The same instance every time is deliberate: the mismatch is a property of the loaded library
+        // and cannot change under this process, so an extraction number one thousand reports exactly
+        // what the first one did.
+        if (ContractMismatch.Value is { } mismatch)
+        {
+            throw mismatch;
+        }
+    }
+
+    /// <summary>
+    /// The comparison the first extraction makes against the library's own version document, or null
+    /// when that document reports the `abi` and the `schemaVersion` this assembly was compiled for.
+    /// </summary>
+    /// <remarks>
+    /// Internal, and taking the document as text, so every outcome is assertable without a native
+    /// library built for a different ABI: the first-use path throws what this returns, so what this
+    /// returns is what a mismatched library produces. A document that does not parse, or that does not
+    /// state both numbers, reports neither of them: the comparison passes only on a document that
+    /// carries both.
+    /// </remarks>
+    internal static ContractVersionMismatchException? CheckContract(string versionDocument)
+    {
+        int? abi = null;
+        int? schemaVersion = null;
+        try
+        {
+            using var document = JsonDocument.Parse(versionDocument);
+            abi = ReadNumber(document.RootElement, "abi");
+            schemaVersion = ReadNumber(document.RootElement, "schemaVersion");
+        }
+        catch (JsonException)
+        {
+            // A document that does not parse states no contract version, which is the same finding as
+            // one that omits a key, and neither may pass the comparison by default.
+        }
+
+        return abi == RequiredAbi && schemaVersion == RequiredSchemaVersion
+            ? null
+            : new ContractVersionMismatchException(RequiredAbi, abi, RequiredSchemaVersion, schemaVersion);
+    }
+
+    /// <summary>
+    /// An integer member of the version document, or null when the document is not an object, the
+    /// member is absent, its value is not a number, or it does not fit an `int` this client can compare.
+    /// </summary>
+    private static int? ReadNumber(JsonElement document, string name) =>
+        document.ValueKind == JsonValueKind.Object
+            && document.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+                ? number
+                : null;
+
+    /// <summary>
     /// A string member, or null when it is absent or is not a string. A field that was not requested
     /// is JSON null and a requested field that found nothing is an empty string, so the JSON kind is
     /// the whole difference between them.
@@ -645,4 +747,68 @@ public static class Extractor
         "Panic" => TrafilaturaErrorKind.Panic,
         _ => TrafilaturaErrorKind.Unknown,
     };
+}
+
+/// <summary>
+/// The loaded native library reports an `abi` or a `schemaVersion` this assembly was not compiled for,
+/// so no extraction ran.
+/// </summary>
+/// <remarks>
+/// Not a <see cref="TrafilaturaException"/>: that type means the extractor ran and refused the page,
+/// and a caller that handles a rejected page must not handle a library it cannot use with it. An
+/// `Actual` value is null when the library's document did not state that number at all, which is a
+/// different finding from a number that differs, and both sides are reported rather than guessed. The
+/// library's whole document is what <see cref="Extractor.AbiVersion"/> returns, and `crate` is not
+/// compared because it is versioned independently of `abi`.
+/// </remarks>
+public sealed class ContractVersionMismatchException : Exception
+{
+    /// <summary>Reports both sides of the comparison this assembly made.</summary>
+    /// <param name="expectedAbi">The `abi` this assembly was compiled for.</param>
+    /// <param name="actualAbi">The `abi` the library reported, or null when it reported none.</param>
+    /// <param name="expectedSchemaVersion">The `schemaVersion` this assembly was compiled for.</param>
+    /// <param name="actualSchemaVersion">The `schemaVersion` the library reported, or null when it reported none.</param>
+    public ContractVersionMismatchException(
+        int expectedAbi,
+        int? actualAbi,
+        int expectedSchemaVersion,
+        int? actualSchemaVersion)
+        : base(BuildMessage(expectedAbi, actualAbi, expectedSchemaVersion, actualSchemaVersion))
+    {
+        ExpectedAbi = expectedAbi;
+        ActualAbi = actualAbi;
+        ExpectedSchemaVersion = expectedSchemaVersion;
+        ActualSchemaVersion = actualSchemaVersion;
+    }
+
+    /// <summary>The `abi` this assembly was compiled for.</summary>
+    public int ExpectedAbi { get; }
+
+    /// <summary>The `abi` the loaded library reported, or null when its version document stated none.</summary>
+    public int? ActualAbi { get; }
+
+    /// <summary>The `schemaVersion` this assembly was compiled for.</summary>
+    public int ExpectedSchemaVersion { get; }
+
+    /// <summary>The `schemaVersion` the loaded library reported, or null when its version document stated none.</summary>
+    public int? ActualSchemaVersion { get; }
+
+    /// <summary>
+    /// Both sides and the fix, because the message is the part of a failure that survives a log: the
+    /// numbers alone say what differed but not what the caller can install to stop it.
+    /// </summary>
+    private static string BuildMessage(
+        int expectedAbi,
+        int? actualAbi,
+        int expectedSchemaVersion,
+        int? actualSchemaVersion) =>
+        $"The loaded native library is not the one this assembly was compiled against: it reports abi "
+        + $"{Describe(actualAbi)} and schemaVersion {Describe(actualSchemaVersion)}, while this assembly requires abi "
+        + $"{expectedAbi} and schemaVersion {expectedSchemaVersion}. Install the RustTrafilatura package version that "
+        + "matches this assembly, or replace the loaded library with the one that package ships (scripts/build.ps1 or "
+        + "scripts/build.sh rebuilds a checkout's library).";
+
+    /// <summary>The number, or the phrase the message uses for a document that did not state one.</summary>
+    private static string Describe(int? value) =>
+        value?.ToString(CultureInfo.InvariantCulture) ?? "(not reported)";
 }

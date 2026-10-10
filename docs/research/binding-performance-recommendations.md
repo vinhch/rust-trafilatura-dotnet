@@ -14,7 +14,7 @@ breaking rather than softened into an additive overload.
 | R3 | Set `IsAotCompatible=true` and add an AOT publish job | Makes the package's trimming and AOT compatibility a promise to consumers, proven by a publish-and-run job rather than asserted | Medium-high: needs the native toolchain in CI | Medium: an unexercised claim is worse than none | Managed surface, CI | Additive to the package; costs CI time |
 | R4 | The analysis recommends `ExtractFromBytes(ReadOnlySpan<byte>)` plus `ExtractFromMemory(ReadOnlyMemory<byte>)` with `byte[]` dropped, and an `ExtractMany` memory overload beside its array one; the adopted surface is one `ExtractFromBytes(ReadOnlyMemory<byte>)` plus `UnmanagedMemory.Wrap` (see "Adopted surface" below) | Removes a 206,712-byte allocation per call for slice and pooled-buffer callers (measured 0.08-0.26 ms on a zero-filled 206,687-byte array, roughly 1% of the 23.25 ms round trip) | Low: all entry points funnel into one span pipeline | Low: the shape is chosen from the compile matrix in section 5 of the main file, reproduced by the committed harness | Managed surface only | Breaking: the `ExtractFromBytes(byte[])` symbol is gone, a null array stops throwing `ArgumentNullException`, and callers rebuild. `ExtractMany` callers change nothing |
 | R5 | Return the shared empty array for a present-but-empty `categories` or `tags` array | Removes two 32-byte `List<string>` allocations per call on that path; a key that is absent or not an array already returns `Array.Empty<string>()` and allocates nothing | Low | Low | Managed surface only | Additive |
-| R6 | Document that `AbiVersion` is not compared against a required ABI | Closes the one drift-detection gap UniFFI covers with a runtime version check | Low | Low | Docs and one test | Additive |
+| R6 | Document that `AbiVersion` is not compared against a required ABI, or close the gap; the maintainer chose to close it in D14, which compares `abi` and `schemaVersion` before the first extraction | Closes the one drift-detection gap UniFFI covers with a runtime version check | Low | Low | Docs, tests and one public exception type | Additive |
 | R7 | Say in the README that the package is not AOT-verified, until R3 lands | Stops a consumer assuming it is | Low | Low | Docs | Additive |
 
 ## R1, read the response from the native bytes
@@ -200,6 +200,16 @@ type. Test: `Empty_Categories_And_Tags_Are_The_Shared_Empty_Array`, asserting
 whose JSON carries `"categories":[]`, plus the existing absent-key assertions unchanged.
 
 ## R6, ABI drift
+
+Superseded by D14. The maintainer chose to compare rather than only to document: the client now reads
+`abi` and `schemaVersion` once per process before the first extraction, caches the verdict, and throws
+`ContractVersionMismatchException` when either number differs from the one this assembly was compiled for.
+`AbiVersion` still returns the library's own document without comparing it, which is how a caller sees what
+actually loaded after a refusal. The comparison does not cover `crate`, which is versioned independently of
+the ABI, and it cannot catch a library that reports these numbers while implementing something else,
+because the document is still the library's own claim.
+
+The remainder of this item is the reasoning as it stood when the choice was still open:
 
 Files: `Extractor.cs`, README, test project. Keep `AbiVersion` returning the library's document, and
 add to its remarks that the client does not compare it and what a comparison would do now that the ABI
