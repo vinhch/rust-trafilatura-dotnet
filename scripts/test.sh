@@ -90,6 +90,8 @@ echo "$script_name: dotnet build -c Release"
 dotnet build "$solution" -c Release || fail "dotnet build failed with exit code $?"
 
 echo "$script_name: dotnet test -c Release (Package category excluded)"
-dotnet test "$solution" -c Release --filter "Category!=Package" || fail "dotnet test failed with exit code $?"
+# The filter is xunit v3's own trait flag: the test project runs on Microsoft.Testing.Platform, opted
+# in by global.json, and that platform does not accept the VSTest --filter expression syntax.
+dotnet test --solution "$solution" -c Release --filter-not-trait "Category=Package" || fail "dotnet test failed with exit code $?"
 
 echo "$script_name: Rust and C# suites passed"

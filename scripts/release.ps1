@@ -223,7 +223,7 @@ Write-Host "$ScriptName`: package   $Package ($Size bytes)"
 $TestsProject = Join-Path $RepoRoot 'dotnet/tests/RustTrafilatura.Tests/RustTrafilatura.Tests.csproj'
 if (-not (Test-Path -PathType Leaf $TestsProject)) { Fail "missing test project: $TestsProject" }
 Write-Host "$ScriptName`: checking  $TestsProject (Package category)"
-dotnet test $TestsProject -c Release --filter 'Category=Package'
+dotnet test --project $TestsProject -c Release --filter-trait 'Category=Package'
 if ($LASTEXITCODE -ne 0) { Fail "the package-content tests failed with exit code $LASTEXITCODE, so $Package is not a package this repository will ship" }
 
 if ($Push) {

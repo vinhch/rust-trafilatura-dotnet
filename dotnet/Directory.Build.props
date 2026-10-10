@@ -17,6 +17,18 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <!-- The test projects run on Microsoft.Testing.Platform rather than VSTest, opted in by the `test`
+       section of the repository's global.json. MTP needs the test assembly to be an executable, and
+       xunit.v3 names its MTP entry point in a property. Both are set here rather than per project so
+       the repository cannot end up with one test project on each platform, which MTP does not support.
+       The condition is the project name and not IsTestProject: the SDK defines that property after this
+       file is imported, so a condition on it would never match, and the fixture and tool projects that
+       are not tests stay untouched. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
   <!-- Probe P4: a ProjectReference does not go through NuGet's RID resolution, so nothing puts
        runtimes/<rid>/native next to the test assembly unless this file does. HostRid must be
        derived here, at evaluation time, and from the environment rather than from a SDK property:

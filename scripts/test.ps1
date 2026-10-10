@@ -106,7 +106,9 @@ Write-Host "$ScriptName`: dotnet build -c Release"
 if ($LASTEXITCODE -ne 0) { Fail "dotnet build failed with exit code $LASTEXITCODE" }
 
 Write-Host "$ScriptName`: dotnet test -c Release (Package category excluded)"
-& dotnet test $Solution -c Release --filter "Category!=Package"
+# The filter is xunit v3's own trait flag: the test project runs on Microsoft.Testing.Platform, opted
+# in by global.json, and that platform does not accept the VSTest --filter expression syntax.
+& dotnet test --solution $Solution -c Release --filter-not-trait "Category=Package"
 if ($LASTEXITCODE -ne 0) { Fail "dotnet test failed with exit code $LASTEXITCODE" }
 
 Write-Host "$ScriptName`: Rust and C# suites passed"

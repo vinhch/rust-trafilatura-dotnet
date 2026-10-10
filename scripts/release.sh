@@ -222,7 +222,7 @@ echo "$script_name: package   $package ($size bytes)"
 tests_project="$repo_root/dotnet/tests/RustTrafilatura.Tests/RustTrafilatura.Tests.csproj"
 [ -f "$tests_project" ] || fail "missing test project: $tests_project"
 echo "$script_name: checking  $tests_project (Package category)"
-if ! dotnet test "$tests_project" -c Release --filter 'Category=Package'; then
+if ! dotnet test --project "$tests_project" -c Release --filter-trait 'Category=Package'; then
   fail "the package-content tests failed, so $package is not a package this repository will ship"
 fi
 

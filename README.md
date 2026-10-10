@@ -325,8 +325,10 @@ builds and checks a package without publishing it, which is how `main` is checke
 
 `release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
 staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed
-`.nupkg`, so `test.sh` leaves it out and a bare `dotnet test` includes it: pass
-`--filter "Category!=Package"` to skip it.
+`.nupkg`, so `test.sh` leaves it out and a bare `dotnet test` includes it: skip it with xunit v3's own
+`--filter-not-trait "Category=Package"`. The test project runs on Microsoft.Testing.Platform, opted in
+by the `test` section of `global.json`, which is why a trait flag replaces the VSTest `--filter`
+expression and why the project is an executable.
 
 `bench.sh` compares one `rt_extract` call against a direct call into the `rust-trafilatura` core on
 the same fixture and machine, and fails when the ratio exceeds its budget; it is a ratio, not a
