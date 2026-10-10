@@ -208,8 +208,9 @@ pub extern "C" fn rt_live_buffers_for_test() -> usize {
 
 /// The `rt_version` document.
 ///
-/// The crate version comes from the manifest, so the reported value cannot drift from the
-/// package version.
+/// The crate version comes from the manifest, so the reported value cannot drift from the package
+/// version, and the core version is injected by `build.rs` from the lockfile, so it is the version of
+/// the code this library links rather than the version the manifest asks for.
 #[derive(Serialize)]
 struct VersionJson {
     abi: u32,
@@ -217,6 +218,7 @@ struct VersionJson {
     schema_version: u32,
     #[serde(rename = "crate")]
     krate: &'static str,
+    core: &'static str,
 }
 
 impl VersionJson {
@@ -225,6 +227,7 @@ impl VersionJson {
             abi: ABI_VERSION,
             schema_version: SCHEMA_VERSION,
             krate: env!("CARGO_PKG_VERSION"),
+            core: env!("RT_CORE_VERSION"),
         }
     }
 }

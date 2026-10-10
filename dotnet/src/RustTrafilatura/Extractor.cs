@@ -20,32 +20,40 @@ public static class Extractor
     private static readonly Lazy<string> VersionDocument = new(ReadVersionDocument);
 
     /// <summary>
+    /// The same document, parsed once: the accessor below hands the fields out, and a document that does
+    /// not parse states nothing rather than failing, because nothing here is compared.
+    /// </summary>
+    private static readonly Lazy<NativeLibraryVersion> ParsedVersionDocument = new(ReadVersion);
+
+    /// <summary>
     /// The one contract comparison per process: `Lazy` runs the factory at most once, so no extraction
     /// after the first calls `rt_version` at all, and null means the library passed.
     /// </summary>
     private static readonly Lazy<ContractVersionMismatchException?> ContractMismatch = new(() => CheckContract(VersionDocument.Value));
 
     /// <summary>
-    /// The version document of the native library: the ABI it implements, the JSON schema it speaks and
-    /// the crate version it was built from, under the keys `abi`, `schemaVersion` and `crate`.
+    /// The version document of the loaded native library, parsed: the ABI it implements, the JSON schema
+    /// it speaks, the version of this binding's own crate and the version of the `rust-trafilatura` core
+    /// it links.
     /// </summary>
     /// <remarks>
     /// The document is what the library says about itself, and this accessor does not compare it: it is
-    /// the path a caller reads to see which library is loaded, `crate` version included, including
-    /// after <see cref="ContractVersionMismatchException"/> reported that `abi` or `schemaVersion`
-    /// differs. The comparison runs on the first call that extracts (see
+    /// the path a caller reads to see which library is loaded, including after
+    /// <see cref="ContractVersionMismatchException"/> reported that `abi` or `schemaVersion` differs. The
+    /// comparison runs on the first call that extracts (see
     /// <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions)"/>), which can catch a
-    /// library that reports different numbers and cannot catch one that reports these while
-    /// implementing something else, because the document is still only the library's claim. `crate` is
-    /// versioned independently of `abi`, so a different crate version is not a mismatch and is not
-    /// compared.
+    /// library that reports different numbers and cannot catch one that reports these while implementing
+    /// something else, because the document is still only the library's claim. `crate` and `core` are
+    /// versioned independently of `abi`, so a different version is not a mismatch and is not compared;
+    /// either is null when the document states none, and <see cref="NativeLibraryVersion.Document"/> is
+    /// the library's own text.
     /// </remarks>
     /// <exception cref="ContractVersionMismatchException">
     /// The library's `rt_version` answered with a code that carried no document, so there is nothing to
-    /// return. A document that is readable is returned as it stands, because this accessor does not
+    /// parse. A document that is readable is handed out as it stands, because this accessor does not
     /// compare it.
     /// </exception>
-    public static string AbiVersion => VersionDocument.Value;
+    public static NativeLibraryVersion LibraryVersion => ParsedVersionDocument.Value;
 
     /// <summary>
     /// Extracts from a page the caller already holds as bytes. Gzip detection, charset detection,
@@ -614,6 +622,35 @@ public static class Extractor
     }
 
     /// <summary>
+    /// The fields of the version document, or a member left unset where the document does not state it. A
+    /// document that does not parse states nothing rather than throwing, which is the same finding as one
+    /// that omits a key: this hands out the library's claim, and the comparison that can fail is
+    /// <see cref="CheckContract(string)"/>.
+    /// </summary>
+    private static NativeLibraryVersion ReadVersion()
+    {
+        var document = VersionDocument.Value;
+
+        try
+        {
+            using var parsed = JsonDocument.Parse(document);
+
+            return new NativeLibraryVersion
+            {
+                Abi = ReadNumber(parsed.RootElement, "abi"),
+                SchemaVersion = ReadNumber(parsed.RootElement, "schemaVersion"),
+                Crate = ReadString(parsed.RootElement, "crate"),
+                Core = ReadString(parsed.RootElement, "core"),
+                Document = document,
+            };
+        }
+        catch (JsonException)
+        {
+            return new NativeLibraryVersion { Document = document };
+        }
+    }
+
+    /// <summary>
     /// The version document a `rt_version` call produced, or the mismatch of a library that produced
     /// none: a non-zero code hands out no document to compare, so there is nothing for
     /// <see cref="CheckContract(string)"/> to read and the library is one this assembly cannot use.
@@ -637,7 +674,7 @@ public static class Extractor
     /// <summary>
     /// Refuses to extract against a library whose contract version differs from the one this assembly
     /// was compiled for. Runs before an extraction rather than from a static constructor or from
-    /// <see cref="AbiVersion"/>: a static constructor failure reaches the caller as
+    /// <see cref="LibraryVersion"/>: a static constructor failure reaches the caller as
     /// <see cref="TypeInitializationException"/>, which hides the finding, and the version accessor is
     /// the path a caller reads to see which library is loaded.
     /// </summary>
@@ -815,8 +852,8 @@ public static class Extractor
 /// version read that fails outright reports both values as null for the same reason and keeps the
 /// failure it produced in <see cref="Exception.InnerException"/>, so the code and the response the
 /// library answered with are not lost. The library's whole document is what
-/// <see cref="Extractor.AbiVersion"/> returns, and `crate` is not compared because it is versioned
-/// independently of `abi`.
+/// <see cref="Extractor.LibraryVersion"/> hands out, and neither `crate` nor `core` is compared because
+/// both are versioned independently of `abi`.
 /// </remarks>
 public sealed class ContractVersionMismatchException : Exception
 {

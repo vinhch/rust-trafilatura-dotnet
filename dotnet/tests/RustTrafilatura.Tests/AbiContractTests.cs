@@ -19,7 +19,7 @@ public sealed class AbiContractTests
     /// <summary>The shipped library's own document is the one passing case only a run can produce.</summary>
     [Fact]
     public void RealLibrary_Passes_The_Contract_Check() =>
-        Assert.Null(Extractor.CheckContract(Extractor.AbiVersion));
+        Assert.Null(Extractor.CheckContract(Extractor.LibraryVersion.Document));
 
     /// <summary>The `abi` side alone, with the schema matching, so only that number can be the finding.</summary>
     [Fact]

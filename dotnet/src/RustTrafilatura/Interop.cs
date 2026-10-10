@@ -235,8 +235,9 @@ internal static partial class Interop
     }
 
     /// <summary>
-    /// The version document as a string. It is the public <see cref="Extractor.AbiVersion"/> value
-    /// itself rather than a copy of a larger payload, so materializing it is what the API returns.
+    /// The version document as a string. It is the text <see cref="Extractor.LibraryVersion"/> parses and
+    /// hands out in <see cref="NativeLibraryVersion.Document"/> rather than a copy of a larger payload, so
+    /// materializing it is what the API reads.
     /// </summary>
     private static string ReadDocument(nint pointer, nint length)
     {

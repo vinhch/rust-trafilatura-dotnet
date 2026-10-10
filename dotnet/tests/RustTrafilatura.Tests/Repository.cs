@@ -42,4 +42,24 @@ internal static class Repository
 
         return match.Groups["version"].Value;
     }
+
+    /// <summary>
+    /// The version of the `rust-trafilatura` core the binding links, which is the other version the native
+    /// library reports. Read from the resolved entry in the lockfile, because that entry is what the build
+    /// compiled against: the manifest's requirement is a range and would answer with the wrong string.
+    /// </summary>
+    internal static string CoreVersion()
+    {
+        var lockfile = Path.Combine(Root(), "rust", "Cargo.lock");
+        var match = Regex.Match(
+            File.ReadAllText(lockfile),
+            @"\[\[package\]\]\r?\nname = ""rust-trafilatura""\r?\nversion = ""(?<version>[^""]+)""");
+        if (!match.Success)
+        {
+            throw new InvalidOperationException(
+                $"No rust-trafilatura [[package]] block in {lockfile}, so the core version the native library reports cannot be derived.");
+        }
+
+        return match.Groups["version"].Value;
+    }
 }

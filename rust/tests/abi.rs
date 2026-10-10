@@ -113,7 +113,7 @@ fn malformed_headers_return_invalid_request() {
 }
 
 #[test]
-fn rt_version_reports_abi_schema_and_crate() {
+fn rt_version_reports_abi_schema_crate_and_core() {
     let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let code = unsafe { rt_version(&mut out, &mut len, &mut cap) };
     assert_eq!(code, 0);
@@ -122,8 +122,9 @@ fn rt_version_reports_abi_schema_and_crate() {
     assert_eq!(
         text,
         format!(
-            r#"{{"abi":1,"schemaVersion":1,"crate":"{}"}}"#,
-            env!("CARGO_PKG_VERSION")
+            r#"{{"abi":1,"schemaVersion":1,"crate":"{}","core":"{}"}}"#,
+            env!("CARGO_PKG_VERSION"),
+            env!("RT_CORE_VERSION")
         )
     );
 }

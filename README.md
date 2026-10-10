@@ -61,7 +61,7 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 | `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
 | `Extractor.ExtractMany(IReadOnlyList<byte[]> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | Extracts a batch under bounded parallelism |
 | `Extractor.ExtractMany(IReadOnlyList<ReadOnlyMemory<byte>> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | The same batch over memory pages |
-| `Extractor.AbiVersion` | The loaded native library's own version document |
+| `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
 
 ### Options
 
@@ -285,8 +285,8 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 - **The contract is checked once per process.** The first extracting call compares the loaded
   library's `abi` and `schemaVersion` against the `1` and `1` this assembly was compiled for, and
   throws `ContractVersionMismatchException`, carrying both sides, when they differ. Later calls
-  report that same outcome rather than re-reading the library; `crate` is versioned independently of
-  `abi` and is not compared.
+  report that same outcome rather than re-reading the library; `crate` and `core` are versioned
+  independently of `abi` and are not compared.
 - **Nothing is fetched and nothing is written.** The library opens no socket and reads no file. It
   writes nothing to stderr, and extraction never echoes the input HTML back in an error.
 - **Untrusted input can still end the process.** A Rust stack overflow aborts rather than throwing,

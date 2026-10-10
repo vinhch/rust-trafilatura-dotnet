@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Xunit;
 
 namespace RustTrafilatura.Tests;
@@ -20,28 +19,29 @@ public sealed class ExtractionTests
     }
 
     [Fact]
-    public void Version_Matches_CrateVersion()
+    public void LibraryVersion_Matches_TheCrateAndCoreItWasBuiltFrom()
     {
-        using var version = JsonDocument.Parse(Extractor.AbiVersion);
+        var version = Extractor.LibraryVersion;
 
-        Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
-        // Read from rust/Cargo.toml rather than repeated here: the assertion is that the loaded library
-        // was built from the sources in this checkout, and a copy of the number would go stale on the
-        // next version bump instead of failing.
-        Assert.Equal(Repository.CrateVersion(), version.RootElement.GetProperty("crate").GetString());
+        Assert.Equal(1, version.Abi);
+        // Read from rust/Cargo.toml and rust/Cargo.lock rather than repeated here: the assertion is that
+        // the loaded library was built from the sources in this checkout, and a copy of either number
+        // would go stale on the next bump instead of failing.
+        Assert.Equal(Repository.CrateVersion(), version.Crate);
+        Assert.Equal(Repository.CoreVersion(), version.Core);
     }
 
     /// <summary>
-    /// The document reports the ABI and the schema this client was built for. `AbiVersion` is the
+    /// The document reports the ABI and the schema this client was built for. `LibraryVersion` is the
     /// library's own claim, and the first extraction is what compares those two numbers against the
     /// ones this assembly was compiled for; this test pins the claim they are compared with.
     /// </summary>
     [Fact]
-    public void AbiVersion_Reports_The_Shipped_Abi()
+    public void LibraryVersion_Reports_The_Shipped_Abi()
     {
-        using var version = JsonDocument.Parse(Extractor.AbiVersion);
+        var version = Extractor.LibraryVersion;
 
-        Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
-        Assert.Equal(1, version.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(1, version.Abi);
+        Assert.Equal(1, version.SchemaVersion);
     }
 }
