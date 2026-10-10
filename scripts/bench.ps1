@@ -1,6 +1,10 @@
 # Measure the rt_extract round trip against a direct core call on the host RID, in the bench
 # profile, and exit non-zero when the ratio exceeds the budget in
 # docs/specs/2026-10-08-dotnet-bindings-design.md (section 9).
+#
+# The same fixture is then run through dotnet/tools/AllocProbe, which prints the managed bytes one
+# extraction call allocates: the number the specification's performance table quotes, on a command a
+# reader can re-run.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -34,7 +38,9 @@ Usage: scripts/$ScriptName
 Runs rust/benches/roundtrip.rs for the host RID in the bench profile, which inherits
 release, prints milliseconds per call for the direct core call and the two rt_extract
 round trips, and exits non-zero when the round-trip ratio exceeds the 1.5x budget in
-docs/specs/2026-10-08-dotnet-bindings-design.md (section 9).
+docs/specs/2026-10-08-dotnet-bindings-design.md (section 9). Then runs
+dotnet/tools/AllocProbe, which prints the managed bytes one extraction call allocates
+through the public API on the same fixture.
 
   -h, --help   Show this message.
 "@ | Write-Host
@@ -113,5 +119,19 @@ Write-Host "$ScriptName`: target directory $TargetDir"
 & cargo bench --locked --manifest-path $Manifest --target $Triple --bench roundtrip
 if ($LASTEXITCODE -ne 0) {
     $Host.UI.WriteErrorLine("$ScriptName`: the bench failed with exit code $LASTEXITCODE")
+    exit $LASTEXITCODE
+}
+
+# The Rust bench never enters the managed side, so the allocation figure in the spec's performance
+# table is measured here, on the same fixture, by a tool that is not part of the test run. It fails
+# when the shipped read path stops allocating less than the string envelope it replaced.
+$Probe = Join-Path $RepoRoot 'dotnet/tools/AllocProbe/AllocProbe.csproj'
+if (-not (Test-Path -PathType Leaf $Probe)) { Fail "missing probe project: $Probe" }
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Fail 'dotnet not found on PATH' }
+
+Write-Host "$ScriptName`: running the allocation probe"
+& dotnet run --project $Probe --configuration Release
+if ($LASTEXITCODE -ne 0) {
+    $Host.UI.WriteErrorLine("$ScriptName`: the allocation probe failed with exit code $LASTEXITCODE")
     exit $LASTEXITCODE
 }

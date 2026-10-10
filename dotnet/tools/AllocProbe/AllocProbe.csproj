@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- One asset: the specification's allocation figure is measured on net8.0 Release. The directory's
+         Directory.Build.props multi-targets every project below dotnet/, so the plural property is
+         cleared here. The probe is a tool scripts/bench.* runs, not a test or a package: it is not in
+         the solution and it is not packable. -->
+    <TargetFrameworks></TargetFrameworks>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>RustTrafilatura.AllocProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/RustTrafilatura/RustTrafilatura.csproj" />
+  </ItemGroup>
+
+</Project>
