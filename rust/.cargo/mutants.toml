@@ -8,5 +8,4 @@
 # that the default feature set does not compile, and the panic-message path, whose hook swallows
 # libtest's own output. That residue would be a permanent weekly survivor list, so the mutant set is
 # confined to the two modules that hold the logic the tests aim at: src/contract.rs and src/engine.rs.
-# Spec section 11 carries the measurement and the narrower filter that would add signal.
 exclude_globs = ["src/lib.rs"]
