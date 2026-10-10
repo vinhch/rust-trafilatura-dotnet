@@ -18,6 +18,11 @@ permissions:
 jobs:
   test:
     name: test (${{ matrix.os }})
+    # The report step creates a check run, which is the one capability this job needs beyond reading the
+    # repository. It is set here rather than at the workflow level so the AOT job keeps contents: read.
+    permissions:
+      contents: read
+      checks: write
     strategy:
       # One runner's failure must not cancel the other: they are the two platforms the package has to
       # work on, and a Windows-only failure is the interesting half.
@@ -58,6 +63,33 @@ jobs:
       - name: Run the Rust and C# suites
         shell: bash
         run: scripts/test.sh --report
+      # Both steps below run after a failing suite on purpose: the run that failed is the one whose
+      # report a reader needs, and only the upload would be pointless without them.
+      #
+      # The files are uploaded before they are published because the check run is a rendering of them:
+      # its markdown and its annotation count are both capped, so the file is where a reader goes when
+      # the summary is cut short.
+      - name: Upload the test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: artifacts/test-results/**/*.xml
+          # A missing file is reported by the publishing step below, once, rather than by both.
+          if-no-files-found: warn
+      # One step for both languages: `java-junit` is the generic JUnit XML parser, named for where the
+      # format came from rather than for a producer, and the xunit reporters and nextest both write it.
+      # A pull request from a fork runs with a read-only token and cannot create a check run, so this
+      # step cannot report there; the documented workaround is a second workflow_run workflow, which
+      # this repository does not have. The name carries the matrix value because two check runs of one
+      # name on one commit are one check run a reader cannot tell from the other.
+      - name: Publish the test report
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
+        with:
+          name: test report (${{ matrix.os }})
+          path: artifacts/test-results/rust/*.xml,artifacts/test-results/dotnet/*.xml
+          reporter: java-junit
 
   # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
   # The job is named after the assertion it carries, so the check that carries the claim is the one a
