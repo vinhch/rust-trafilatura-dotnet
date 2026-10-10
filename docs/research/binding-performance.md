@@ -15,7 +15,7 @@ with its command and its verbatim output, number or exception (`measured` in the
 
 ## 1. The measured bound
 
-The spec's performance table [S9] gates the native wrapper at 1.5x a direct core call and records
+The native wrapper is gated at 1.5x a direct core call, and the envelope this document measures records
 `roundtrip/core` at 0.95-1.10. Re-run for this evaluation with `pwsh -File scripts/bench.ps1` on an
 Intel Core i7-9850H, Windows 11 Pro build 26300, with rustc 1.98.1 and the `bench` profile
 (`x86_64-pc-windows-msvc`):
@@ -27,7 +27,7 @@ Intel Core i7-9850H, Windows 11 Pro build 26300, with rustc 1.98.1 and the `benc
 | `roundtripHtml` | 24.281 | 1.032 | same plus `contentHtml` (informational) |
 
 Fixture 206,687 bytes; response 198,625 bytes by default and 403,131 bytes with `contentHtml`
-[bench]. The host is the one spec section 9 names for its own bench row, so the shares below are
+[bench]. The host is the one the bench above records, so the shares below are
 comparable with the table above. Every managed figure in this document was measured on that same
 host, in the release configuration of the harness named beside it. Two consequences bound everything
 below.
@@ -367,7 +367,7 @@ for speed; change it only for AOT compatibility (section 8).
 
 The maintainer decided the package multi-targets `net8.0;net10.0`, with `net9.0` out. That is
 recorded here as a decision; what follows is what the second asset buys and costs. The spec's reach
-argument [S15] is unaffected and is not an argument against it: a `net10.0` consumer resolving the
+argument is unaffected and is not an argument against it: a `net10.0` consumer resolving the
 `net8.0` asset is why a second asset is not needed for reach, and also why dropping the `net8.0` asset
 would strand every consumer below .NET 10.
 
@@ -375,7 +375,7 @@ would strand every consumer below .NET 10.
 | --- | --- | --- | --- |
 | Enum member names on the wire | No `[JsonStringEnumMemberName]`, which arrived in .NET 9 [NET9], so the wire spellings need a hand-written `JsonConverter<T>` or a `#if` | `[JsonStringEnumMemberName("favorPrecision")]` plus `[JsonSourceGenerationOptions(UseStringEnumConverter = true)]` produces the exact wire bytes | Observed: the harness's net8.0 case (reflection plus hand-written converters) and its net10.0 case (attributes, no converter code) both print `{"schemaVersion":1,"options":{"focus":"favorPrecision","htmlDateMode":"extensive"}}` (transcripts) |
 | `JsonStringEnumConverter<TEnum>` | Present, assembly version 8.0.0.0 [enumdoc] | Present | Observed: the harness's generic-converter case builds and runs on both, printing `{"focus":"favorPrecision"}` |
-| `System.Text.Json` origin | In-box 8.0.x plus the explicit `System.Text.Json 8.0.6` reference the spec requires | In-box 10.x; the reference can be dropped from that asset | Compiled: the harness project that produces the byte-identical header has no `System.Text.Json` package reference at all and its `net10.0` asset builds and runs (transcripts) |
+| `System.Text.Json` origin | In-box 8.0.x plus an explicit `System.Text.Json 8.0.6` reference | In-box 10.x; the reference can be dropped from that asset | Compiled: the harness project that produces the byte-identical header has no `System.Text.Json` package reference at all and its `net10.0` asset builds and runs (transcripts) |
 | Trim and AOT analyzers | Present; the SDK guidance says targeting the latest supported TFM "helps you benefit from the latest analyzer improvements" [AOT] | Newer analyzer set | No delta measured: the guidance names the benefit without quantifying it, and no analyzer release note quantifying it for .NET 9 or 10 was found |
 | `JsonSerializerOptions.Strict`, `AllowDuplicateProperties` (.NET 10 [NET10]) | Absent | Present | No use here: the header is written by this package and the response is read by hand |
 | `SearchValues<T>` | Introduced in .NET 8 [NET9] | Extended to substrings in .NET 9 | No use here: no hot set or substring search exists in this package |
@@ -401,8 +401,8 @@ puts the wire contract in two places.
 What proves the second asset: `Header_Json_Is_Identical_Across_TargetFrameworks`, which serializes the
 header for a fixed option set including `ExtractionFocus.FavorPrecision` and
 `HtmlDateMode.Extensive` and compares the bytes to a literal recorded in the repository, run in the
-test matrix for both frameworks. That is the assertion the spec's `Header_Json_Has_The_Wire_Shape` and
-`Enum_Options_Use_The_Core_Spellings` [S11] already make for one.
+test matrix for both frameworks. That is the assertion `Header_Json_Has_The_Wire_Shape` and
+`Enum_Options_Use_The_Core_Spellings` already make for one.
 
 ## 8. Trimming and Native AOT
 
@@ -552,8 +552,8 @@ defined in the companion recommendations file.
 | Note item | Verdict |
 | --- | --- |
 | RustBuffer serialization of complex types is a bottleneck; use raw byte sequences or `sequence<u8>` | Already true of the applicable half: the payload is raw bytes, never base64 (D10), and the response is one buffer. The premise is UniFFI's problem, not this design's |
-| Object wrapping causes GC pressure; batch instead of returning objects | Not applicable: there are no handle objects, and `ExtractMany` already batches across pages (spec section 8) |
-| Missing `Dispose` leaks native objects | Not applicable: no handle outlives a call and nothing here is disposable (spec section 8) |
+| Object wrapping causes GC pressure; batch instead of returning objects | Not applicable: there are no handle objects, and `ExtractMany` already batches across pages |
+| Missing `Dispose` leaks native objects | Not applicable: no handle outlives a call and nothing here is disposable |
 | Add `[SuppressGCTransition]` for short calls | Wrong for this design; rejected with the attribute's own rule in the recommendations file |
 | A sync call blocks the caller's thread; use UniFFI async | Accurate about UniFFI, which does emit `Task`-returning bindings and an async runtime helper [CS-ASYNC]. Not applicable here: no async surface (D5), and the work is CPU-bound, so `ExtractMany` is the throughput answer |
 | Thread-pool starvation between two runtimes | Not applicable: there is one runtime, one worker thread per call (D6), and no Rust async runtime |
@@ -564,7 +564,7 @@ defined in the companion recommendations file.
 | Wrap the returned pointer with `new ReadOnlySpan<byte>((void*)rustPtr, length)` | Correct, and already how the ABI is shaped; it is the mechanism R1 uses for the response |
 | Use `fixed` or `unsafe` to take the pointer for the P/Invoke | Correct, and optional: `[LibraryImport]` accepts a `byte[]` or a span parameter and pins it itself, and rejects only a memory parameter, `ReadOnlyMemory<byte>`, with `SYSLIB1051` (section 5); the explicit `fixed` in `Interop.cs` is a choice, not the only way |
 | Pool or scope the extractor object across calls | Not applicable: the API is static and stateless, so there is nothing to pool. The per-call thread is the core's stack policy (D6), not an object |
-| Compile Rust regexes once with `lazy_static`/`OnceLock` | Core-crate concern, outside this repository and outside the binding layer. The core already holds its per-call caches in `LazyLock` statics and has no shared mutable state in the extraction path (spec section 3) |
+| Compile Rust regexes once with `lazy_static`/`OnceLock` | Core-crate concern, outside this repository and outside the binding layer. The core already holds its per-call caches in `LazyLock` statics and has no shared mutable state in the extraction path |
 | Reuse `Cow<'a, str>` and buffer text in Rust | Core-crate concern, outside this repository and outside the binding layer; no measurement here supports a change |
 | Whitespace cleanup by character iteration beats regex "5 to 10 times" | No source and no measurement: the note states the figure without one, nothing in this repository checks it, and the core's whitespace handling is outside this repository |
 | Estimate the Rust output buffer at "20 to 30% of the HTML size" | No source and no measurement either. This repository's own checkable number is different in kind: the bench fixture's 206,687 bytes of HTML produce a 198,625-byte default JSON response [bench] |
@@ -577,7 +577,6 @@ defined in the companion recommendations file.
 The UniFFI guide is cited at the 0.32 series; each fact names the release it belongs to. `uniffi` on
 crates.io: 0.32.2 (2026-09-23), 0.32.1 (2026-09-09), 0.32.0 (2026-06-30).
 
-- [S9], [S11], [S15]: `docs/specs/2026-10-08-dotnet-bindings-design.md`, sections 9, 11 and 15.
 - [bench]: `rust/benches/roundtrip.rs`, `scripts/bench.ps1`, and the run recorded in section 1.
 - [CHANGELOG]: https://github.com/mozilla/uniffi-rs/blob/main/CHANGELOG.md
 - [crates]: https://crates.io/api/v1/crates/uniffi

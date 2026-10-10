@@ -8,8 +8,7 @@ namespace RustTrafilatura.AllocProbe;
 
 /// <summary>
 /// Prints the managed bytes one extraction call allocates through the public API, on the fixture the
-/// Rust round-trip bench uses, so the allocation figure in the specification has a command that
-/// reproduces it.
+/// Rust round-trip bench uses, so the allocation figure has a command that reproduces it.
 /// </summary>
 /// <remarks>
 /// Two paths are measured over the same page: the shipped read, which takes the response as a
@@ -47,7 +46,7 @@ internal static class Program
     private const int MeasuredCalls = 20;
     private const int Runs = 5;
 
-    /// <summary>The bench's pinned header: the FAST path, so the measured call is the one the spec's table describes.</summary>
+    /// <summary>The bench's pinned header: the FAST path, so the measured call is the one the bench times.</summary>
     private static readonly byte[] Header = "{\"options\":{\"enableFallback\":false}}"u8.ToArray();
 
     /// <summary>

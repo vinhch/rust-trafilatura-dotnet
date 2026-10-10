@@ -71,7 +71,7 @@ static PANIC_HOOK: OnceLock<()> = OnceLock::new();
 ///
 /// The published throughput comes from mimalloc, and the core crate declares it only in its own
 /// binary and example, so a cdylib built from this crate would otherwise fall back to the system
-/// allocator. `default-features = false` drops the feature with the dependency (spec section 9).
+/// allocator. `default-features = false` drops the feature with the dependency.
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -174,8 +174,8 @@ pub unsafe extern "C" fn rt_version(
 /// Panics on purpose, so the `test-hooks` suite can prove the panic boundary end to end.
 ///
 /// The codes are [`rt_extract`]'s: `2` for a null out-parameter, which writes nothing, and `3` with
-/// the `Panic` envelope. The symbol exists only in a build with the `test-hooks` feature, which the
-/// specification requires to be absent from every release artifact.
+/// the `Panic` envelope. The symbol exists only in a build with the `test-hooks` feature, which must
+/// be absent from every release artifact.
 ///
 /// # Safety
 ///

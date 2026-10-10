@@ -15,9 +15,9 @@ readonly rids="win-x64 linux-x64 linux-arm64 osx-x64 osx-arm64"
 readonly package_files="README.md LICENSE THIRD-PARTY-NOTICES.md"
 readonly project="dotnet/src/RustTrafilatura/RustTrafilatura.csproj"
 
-# The two exports the `test-hooks` feature adds to rust/src/lib.rs. The panicking one is the export
-# the specification names as one a release build must not carry, and the counter beside it comes from
-# the same feature, so the shipped library must hold neither.
+# The two exports the `test-hooks` feature adds to rust/src/lib.rs. The panicking one is an export a
+# release build must not carry, and the counter beside it comes from the same feature, so the shipped
+# library must hold neither.
 readonly forbidden_exports="rt_panic_for_test rt_live_buffers_for_test"
 
 usage() {

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- One asset: the specification's allocation figure is measured on net8.0 Release. The directory's
+    <!-- One asset: the allocation figure this probe prints is measured on net8.0 Release. The directory's
          Directory.Build.props multi-targets every project below dotnet/, so the plural property is
          cleared here. The probe is a tool scripts/bench.* runs, not a test or a package: it is not in
          the solution and it is not packable. -->

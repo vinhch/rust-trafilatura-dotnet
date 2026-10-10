@@ -90,10 +90,10 @@ Write-Host "$ScriptName`: cargo test --locked"
 & cargo test --locked --manifest-path $Manifest
 if ($LASTEXITCODE -ne 0) { Fail "cargo test failed with exit code $LASTEXITCODE" }
 
-# The test-hooks feature gates four tests, three of them rows in section 11's test table
+# The test-hooks feature gates four tests, three of them allocation-counter tests
 # (`free_round_trip_restores_allocation_counter`, `allocation_counter_balances_over_many_calls` and
-# `panic_is_caught`; the fourth, `concurrent_extract_and_free_returns_the_counter_to_baseline`, is a row
-# in that section's mutation table). Without this run they are compiled out, and
+# `panic_is_caught`; the fourth, `concurrent_extract_and_free_returns_the_counter_to_baseline`, a
+# concurrency test). Without this run they are compiled out, and
 # `rust/tests/allocation.rs`, gated whole, reports "running 0 tests": a green suite that executed
 # nothing. The staged library stays the default build, because scripts/release.* refuses an artifact
 # that exports the feature's symbols.

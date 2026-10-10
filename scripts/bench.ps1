@@ -1,10 +1,8 @@
 # Measure the rt_extract round trip against a direct core call on the host RID, in the bench
-# profile, and exit non-zero when the ratio exceeds the budget in
-# docs/specs/2026-10-08-dotnet-bindings-design.md (section 9).
+# profile, and exit non-zero when the ratio exceeds the 1.5x budget.
 #
 # The same fixture is then run through dotnet/tools/AllocProbe, which prints the managed bytes one
-# extraction call allocates: the number the specification's performance table quotes, on a command a
-# reader can re-run.
+# extraction call allocates: the allocation figure, on a command a reader can re-run.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -37,8 +35,7 @@ Usage: scripts/$ScriptName
 
 Runs rust/benches/roundtrip.rs for the host RID in the bench profile, which inherits
 release, prints milliseconds per call for the direct core call and the two rt_extract
-round trips, and exits non-zero when the round-trip ratio exceeds the 1.5x budget in
-docs/specs/2026-10-08-dotnet-bindings-design.md (section 9). Then runs
+round trips, and exits non-zero when the round-trip ratio exceeds the 1.5x budget. Then runs
 dotnet/tools/AllocProbe, which prints the managed bytes one extraction call allocates
 through the public API on the same fixture.
 
@@ -122,8 +119,8 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# The Rust bench never enters the managed side, so the allocation figure in the spec's performance
-# table is measured here, on the same fixture, by a tool that is not part of the test run. It fails
+# The Rust bench never enters the managed side, so this allocation figure is measured here, on the
+# same fixture, by a tool that is not part of the test run. It fails
 # when the shipped read path stops allocating less than the string envelope it replaced.
 $Probe = Join-Path $RepoRoot 'dotnet/tools/AllocProbe/AllocProbe.csproj'
 if (-not (Test-Path -PathType Leaf $Probe)) { Fail "missing probe project: $Probe" }

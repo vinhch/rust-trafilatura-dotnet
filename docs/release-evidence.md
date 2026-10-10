@@ -1,11 +1,10 @@
 # Release evidence
 
-What the package's seven success criteria (spec section 14 of
-`docs/specs/2026-10-08-dotnet-bindings-design.md`) are worth at commit
-`69066054d9589474b5de2a262c83076f3cff7f06` on branch `feat/dotnet-bindings`. Every command below ran
-for this page, on the host and date the page records, at that commit; a number that could not be
-re-measured says where it came from instead of being presented as fresh. A criterion this host cannot
-run names the CI job that owns it and says plainly that nothing has verified it.
+What the package's seven success criteria are worth on branch `feat/dotnet-bindings`. Every command
+below ran for this page, on the host and date the page records, at the tree it records. A number
+that could not be re-measured says where it came from instead of being presented as fresh. A
+criterion this host cannot run names the CI job that owns it and says plainly that nothing has
+verified it.
 
 Corrections made after those runs, on the current branch head: the four native tests this page listed
 as unverified, because `scripts/test.*` passed no feature flag at the time, now run in a second
@@ -54,7 +53,7 @@ Verified by CI only, and nothing has run it yet:
 
 Not verified by anything:
 
-- Probe P3 (the Linux artifacts' required `GLIBC_*` versions, spec section 13) — it needs the
+- Probe P3 (the Linux artifacts' required `GLIBC_*` versions) — it needs the
   `linux-x64` artifact from `bindings.yml`'s `native` job and `readelf --version-info`. Owner: the
   plan's Task 12 P3 step, still unchecked.
 - Both workflows' own execution: matrix expansion, `needs`/`if` wiring, the artifact API, the
@@ -294,7 +293,7 @@ Observed (exit 0, 265.1 s wall clock, `RUSTTRAFILATURA_STACK_BYTES` unset):
 depth_probe: depth=128000 bytes=1408676 code=0 stack=RUSTTRAFILATURA_STACK_BYTES=unset (library default)
 ```
 
-The recorded value is spec section 13's P1 row: measured 2026-10-10, the last depth that returned was
+The recorded value is probe P1: measured 2026-10-10, the last depth that returned was
 128,000 nested `<div>` levels, 1,408,676 bytes of HTML, 200 s with the shipped allocator against 243 s
 without it, no abort anywhere in the swept range. This run reproduced the depth, the payload size and
 `code=0` exactly, so the record is not stale and section 13 was left as Task 6 wrote it. It did not

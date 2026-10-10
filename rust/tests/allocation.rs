@@ -13,7 +13,7 @@ use std::sync::Mutex;
 /// Serializes the tests below: both assert on the same counter.
 static COUNTER: Mutex<()> = Mutex::new(());
 
-/// Cycles in the balance test; the same 1,000 the specification's test table names.
+/// Cycles in the balance test.
 const CALLS: usize = 1_000;
 
 /// Requests only `contentText`, so each cycle does a real extraction and a small serialization.

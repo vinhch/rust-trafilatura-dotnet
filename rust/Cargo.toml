@@ -13,7 +13,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 # The budget gate is a plain `fn main` timed with `std::time::Instant`, so the harness is off and no
-# bench framework is a dependency (spec section 9).
+# bench framework is a dependency.
 [[bench]]
 name = "roundtrip"
 harness = false

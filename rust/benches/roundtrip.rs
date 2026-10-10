@@ -1,8 +1,7 @@
 //! The round-trip bench: a direct core call against the `rt_extract` ABI.
 //!
-//! `harness = false`, so this is a plain `fn main` timed with `std::time::Instant`: the spec's
-//! performance table forbids adding `criterion` or `divan` to a crate whose point is a small
-//! dependency tree.
+//! `harness = false`, so this is a plain `fn main` timed with `std::time::Instant`: a bench framework
+//! would add a dependency to a crate whose point is a small dependency tree.
 //!
 //! Three paths, one fixture, one pinned option set:
 //!
@@ -12,7 +11,7 @@
 //! - `roundtripHtml`: the same round trip with `contentHtml` added, the opt-in D11 keeps off by
 //!   default.
 //!
-//! `roundtrip/core` is the budget gate of the spec's performance table: the round trip must stay
+//! `roundtrip/core` is the budget gate: the round trip must stay
 //! within 1.5x the direct call. `roundtripHtml/core` is printed but not gated, because the direct
 //! call never serializes the extracted tree: that ratio covers the requested `contentHtml` work as
 //! well as the wrapper, so gating it would gate the option rather than the ABI.
@@ -28,12 +27,12 @@ use serde_json::Value;
 use std::fmt::Write as _;
 use std::time::Instant;
 
-/// The fixture size the specification names: a fixed 200 KB fixture.
+/// The fixture size: a fixed 200 KB fixture.
 const FIXTURE_BYTES: usize = 200 * 1024;
 
-/// The length [`fixture`] actually produces, which the specification records as the fixture size.
+/// The length [`fixture`] actually produces, which is the fixture size.
 /// It depends on the paragraph templates, so the assertion in [`main`] fails the bench loudly when a
-/// generator edit changes it, instead of silently invalidating the number the spec quotes.
+/// generator edit changes it, instead of silently invalidating the number this bench quotes.
 const FIXTURE_LEN: usize = 206_687;
 
 /// Timed iterations per path, as specified.
@@ -53,7 +52,7 @@ const WARMUP: usize = 50;
 /// which undersells the gated ratio: the clock now starts only after the paths have played again.
 const SETTLE_ITERATIONS: usize = ITERATIONS / ROUNDS;
 
-/// The ratio budget from the spec's performance table.
+/// The ratio budget the round trip must stay within.
 const BUDGET: f64 = 1.5;
 
 /// The paths in report order.
@@ -64,8 +63,8 @@ const CORE: usize = 0;
 const ROUNDTRIP: usize = 1;
 const ROUNDTRIP_HTML: usize = 2;
 
-/// The header for the default `responseFields`. `enableFallback: false` is the FAST path the spec's
-/// option row names, and it is also the core's own default: the header states it rather than
+/// The header for the default `responseFields`. `enableFallback: false` is the FAST path, and it is
+/// also the core's own default: the header states it rather than
 /// relying on it, so the pinned set is visible in the output.
 const HEADER_DEFAULT: &[u8] = br#"{"options":{"enableFallback":false}}"#;
 
@@ -83,7 +82,7 @@ fn main() {
     let payload = fixture.as_bytes();
     let options = Options::default();
 
-    // A generator edit must fail here rather than quietly change the size the spec records.
+    // A generator edit must fail here rather than quietly change the size this bench records.
     assert_eq!(
         payload.len(),
         FIXTURE_LEN,

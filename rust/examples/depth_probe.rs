@@ -1,13 +1,13 @@
 //! Probe P1: the HTML nesting depth at which extraction aborts the process.
 //!
 //! It calls the exported `rt_extract` rather than the core directly. The shipped artifact runs the
-//! extraction on a thread with an explicit stack size (`RUSTTRAFILATURA_STACK_BYTES`, default 16 MiB,
-//! spec section 5), while a direct core call would run on the main thread and measure its ~1 MiB
+//! extraction on a thread with an explicit stack size (`RUSTTRAFILATURA_STACK_BYTES`, default 16 MiB),
+//! while a direct core call would run on the main thread and measure its ~1 MiB
 //! stack: a threshold from that would say nothing about the library a .NET host loads.
 //!
 //! Usage: `depth_probe <depth>`. It prints one line and exits 0 when the call returns; a depth the
 //! worker stack cannot survive aborts the process, so there is no output and the exit code is not 0.
-//! Sweep it with a doubling search and a bisection, as recorded in the spec's section 13.
+//! Sweep it with a doubling search and a bisection.
 
 use rust_trafilatura_ffi::{rt_extract, rt_free};
 

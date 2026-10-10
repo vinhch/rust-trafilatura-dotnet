@@ -86,8 +86,8 @@ recorded in the test, run for both frameworks; plus the existing `Header_Json_Ha
 Files: `dotnet/Directory.Build.props` (`<IsAotCompatible>true</IsAotCompatible>`), a scratch console
 project under the test tree, and the two workflow files, `.github/workflows/bindings.yml` and
 `.github/workflows/ci.yml`, plus their package README. Neither workflow exists in the repository yet:
-the spec's section 10 assigns `bindings.yml` to the packaging task and `ci.yml` to the CI task, so this
-sketch adds jobs to files those tasks create, and the README sentence lands after they have. If this
+`bindings.yml` belongs to the packaging task and `ci.yml` to the CI task, so this sketch adds jobs to
+files those tasks create, and the README sentence lands after they have. If this
 task runs first, it creates the workflow files with only the AOT job in them and the later tasks add
 theirs.
 
@@ -213,7 +213,7 @@ The remainder of this item is the reasoning as it stood when the choice was stil
 
 Files: `Extractor.cs`, README, test project. Keep `AbiVersion` returning the library's document, and
 add to its remarks that the client does not compare it and what a comparison would do now that the ABI
-is versioned independently of the crate (design spec section 5). Test:
+is versioned independently of the crate. Test:
 `AbiVersion_Reports_The_Shipped_Abi`, asserting the parsed `abi` is `1` and `schemaVersion` is `1`.
 
 ## R7, README wording
@@ -251,8 +251,8 @@ Each negation is tied to a decision or a measurement, not to taste.
   throughput; `ExtractMany` already bounds parallelism across pages; and a `Task`-returning method would
   imply a cancellation the ABI cannot honour, because `rt_extract` has no cancellation path.
 - Streaming the response to the caller instead of returning it whole. The ABI hands out one buffer
-  freed as a unit, and the spec's target consumer is a server-side workload that wants the typed
-  result, not the JSON (spec section 1).
+  freed as a unit, and the target consumer is a server-side workload that wants the typed result, not
+  the JSON.
 - A hand-rolled JSON scanner in place of `Utf8JsonReader`. Reasoning: the reader is a `ref struct` over
   the span whose read path materialises nothing but the strings it returns (the measured allocation
   inventory is section 6 of the main file), so a hand-rolled scanner can only match it while adding
@@ -260,7 +260,8 @@ Each negation is tied to a decision or a measurement, not to taste.
 
 ## Sources
 
-- Design spec `docs/specs/2026-10-08-dotnet-bindings-design.md`, sections 5, 9, 11, 15.
+- The C ABI and its return codes: `rust/src/contract.rs`, `rust/src/engine.rs` and
+  `dotnet/src/RustTrafilatura/Interop.cs`.
 - `rust/benches/roundtrip.rs`, `scripts/bench.ps1`, and the run recorded in the main document.
 - The probes under `docs/research/binding-performance-probes/`; their output is
   `binding-performance-probes/transcripts.md`.

@@ -1,7 +1,6 @@
 # Fast feedback on every push and pull request. Every job either calls a scripts/ file that a
-# developer can run, or runs the tool section 10 of
-# docs/specs/2026-10-08-dotnet-bindings-design.md names for it, so a local run and this workflow
-# execute the same sequence. Actions are pinned to a commit SHA with their version in a trailing
+# developer can run, or runs the same tool, so a local run and this workflow execute the same
+# sequence. Actions are pinned to a commit SHA with their version in a trailing
 # comment, and .github/dependabot.yml moves the ones whose repository tags a release. The
 # dtolnay/rust-toolchain pin is the tip of that repository's `1.98.1` branch rather than a commit in
 # its default branch, and that repository carries no version tags, so Dependabot cannot move it: the

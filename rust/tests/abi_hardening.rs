@@ -11,11 +11,11 @@ use rust_trafilatura_ffi::rt_panic_for_test;
 use rust_trafilatura_ffi::{rt_extract, rt_free};
 use serde_json::Value;
 
-/// The default payload cap in bytes; the specification fixes both this value and the rule that the
-/// cap is compared with `>`, so a payload exactly at the cap is accepted (spec section 9).
+/// The default payload cap in bytes. The cap is compared with `>`, so a payload exactly at the cap is
+/// accepted.
 const DEFAULT_PAYLOAD_CAP: usize = 64 * 1024 * 1024;
 
-/// The default header cap in bytes (spec section 9).
+/// The default header cap in bytes.
 const DEFAULT_HEADER_CAP: usize = 1024 * 1024;
 
 /// The environment variables the caps are read from; a rejection names the variable it broke.
