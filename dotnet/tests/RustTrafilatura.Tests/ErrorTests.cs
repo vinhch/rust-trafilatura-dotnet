@@ -36,7 +36,7 @@ public sealed class ErrorTests
     [Fact]
     public void InsufficientContent_Throws_TrafilaturaException()
     {
-        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes([]));
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(ReadOnlyMemory<byte>.Empty));
 
         Assert.Equal(TrafilaturaErrorKind.OutputTooShort, exception.Kind);
         Assert.Equal("text and comments are not long enough: 0 0", exception.Message);

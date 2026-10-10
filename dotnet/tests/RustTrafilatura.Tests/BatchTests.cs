@@ -93,10 +93,21 @@ public sealed class BatchTests
     [Fact]
     public void ExtractMany_Rejects_Invalid_Arguments()
     {
-        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany(null!));
-        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany([]));
-        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany([Fixtures.Article, null!]));
+        // The two overloads are written out rather than passed as a bare collection expression: an
+        // empty one and a null one are the two arguments with no element type to resolve them, so the
+        // collection has to say which pages it holds.
+        var pages = new List<byte[]>();
+
+        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany((IReadOnlyList<byte[]>)null!));
+        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany(pages));
+        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany(new List<byte[]> { Fixtures.Article, null! }));
         Assert.Throws<ArgumentOutOfRangeException>(() => Extractor.ExtractMany([Fixtures.Article], maxDegreeOfParallelism: -1));
+
+        // The memory overload rejects the same arguments the same way.
+        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany((IReadOnlyList<ReadOnlyMemory<byte>>)null!));
+        Assert.ThrowsAny<ArgumentException>(() => Extractor.ExtractMany(new List<ReadOnlyMemory<byte>>()));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Extractor.ExtractMany(new List<ReadOnlyMemory<byte>> { Fixtures.Article }, maxDegreeOfParallelism: -1));
     }
 
     [Fact]
@@ -149,8 +160,14 @@ public sealed class BatchTests
             }.Succeeded);
     }
 
-    /// <summary>The sequential counterpart of one batch item, for comparing the two paths.</summary>
-    private static (ExtractionResult? Result, TrafilaturaErrorKind? Error) ExtractOrError(byte[] page)
+    /// <summary>
+    /// The sequential counterpart of one batch item, for comparing the two paths.
+    /// </summary>
+    private static (ExtractionResult? Result, TrafilaturaErrorKind? Error) ExtractOrError(byte[] page) =>
+        ExtractOrError(page.AsMemory());
+
+    /// <summary>The same counterpart for a page held as memory, which is the shape a batch item takes.</summary>
+    private static (ExtractionResult? Result, TrafilaturaErrorKind? Error) ExtractOrError(ReadOnlyMemory<byte> page)
     {
         try
         {
@@ -160,5 +177,98 @@ public sealed class BatchTests
         {
             return (null, exception.Kind);
         }
+    }
+
+    /// <summary>
+    /// Both batch overloads are candidates the compiler can tell apart, and each collection a caller
+    /// holds binds to the one that takes it. Removal of either overload would fail to compile, and a
+    /// resolution that picked the other one would return a different page here.
+    /// </summary>
+    [Fact]
+    public void ExtractMany_Array_And_Memory_Overloads_Are_Both_Reachable()
+    {
+        var pages = new[] { Marked(0), Empty, Marked(2) };
+
+        var fromList = Extractor.ExtractMany(new List<byte[]> { Marked(0), Empty, Marked(2) });
+        var fromArray = Extractor.ExtractMany(pages);
+        var fromMemory = Extractor.ExtractMany(pages.Select(page => (ReadOnlyMemory<byte>)page).ToList());
+
+        Assert.Equal(3, fromList.Count);
+        Assert.Equal(3, fromArray.Count);
+        Assert.Equal(3, fromMemory.Count);
+
+        for (var index = 0; index < 3; index++)
+        {
+            AssertItem(index, fromList[index]);
+            AssertItem(index, fromArray[index]);
+            AssertItem(index, fromMemory[index]);
+
+            // The three collections hold the same pages, so the three overloads owe the same items.
+            Assert.Equal(fromList[index].Result?.Metadata?.Title, fromArray[index].Result?.Metadata?.Title);
+            Assert.Equal(fromList[index].Result?.Metadata?.Title, fromMemory[index].Result?.Metadata?.Title);
+            Assert.Equal(fromList[index].Error?.Kind, fromMemory[index].Error?.Kind);
+        }
+    }
+
+    /// <summary>
+    /// The memory overload is a batch, not a second implementation of one: one item per input in input
+    /// order, with the same result or the same error kind the sequential call produced for that page.
+    /// </summary>
+    [Fact]
+    public void ExtractMany_MemoryOverload_Matches_Sequential()
+    {
+        // The pages are slices, so the overload is exercised with the shape it exists for: a batch
+        // whose items are views into a larger buffer rather than arrays of their own.
+        var inputs = new[] { Marked(0), Marked(1), Empty, Marked(3) };
+
+        var backing = new byte[inputs.Sum(page => page.Length)];
+        var pages = new ReadOnlyMemory<byte>[inputs.Length];
+        var offset = 0;
+        for (var index = 0; index < pages.Length; index++)
+        {
+            var slice = backing.AsMemory(offset, inputs[index].Length);
+            inputs[index].CopyTo(slice);
+
+            pages[index] = slice;
+            offset += inputs[index].Length;
+        }
+
+        var batch = Extractor.ExtractMany(pages);
+        var sequential = pages.Select(ExtractOrError).ToList();
+
+        Assert.Equal(sequential.Count, batch.Count);
+        for (var index = 0; index < pages.Length; index++)
+        {
+            Assert.Equal(sequential[index].Result?.ContentText, batch[index].Result?.ContentText);
+            Assert.Equal(sequential[index].Result?.Metadata?.Title, batch[index].Result?.Metadata?.Title);
+            Assert.Equal(sequential[index].Result?.Metadata?.Url, batch[index].Result?.Metadata?.Url);
+            Assert.Equal(sequential[index].Error, batch[index].Error?.Kind);
+
+            // Exactly one of the two is set, never both and never neither.
+            Assert.Equal(batch[index].Result is not null, batch[index].Succeeded);
+
+            // The item at this index reports this page's own marker, so a batch that returned the
+            // right results in the wrong order would not pass.
+            var expectedTitle = index == 2 ? null : $"Page {index} marker";
+            Assert.Equal(expectedTitle, batch[index].Result?.Metadata?.Title);        }
+    }
+
+    /// <summary>
+    /// The item the batch owes the page at <paramref name="index"/>: a result carrying that page's own
+    /// markers, or the failure that page has on its own.
+    /// </summary>
+    private static void AssertItem(int index, ExtractionBatchItem item)
+    {
+        if (index == 1)
+        {
+            Assert.False(item.Succeeded);
+            Assert.Null(item.Result);
+            Assert.Equal(TrafilaturaErrorKind.OutputTooShort, item.Error!.Kind);
+            return;
+        }
+
+        Assert.True(item.Succeeded);
+        Assert.Equal($"Page {index} marker", item.Result!.Metadata!.Title);
+        Assert.Equal($"https://example.org/article?page={index}", item.Result!.Metadata!.Url);
     }
 }

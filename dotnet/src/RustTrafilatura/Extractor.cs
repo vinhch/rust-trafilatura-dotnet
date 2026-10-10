@@ -22,18 +22,22 @@ public static class Extractor
     /// <summary>
     /// Extracts from a page the caller already holds as bytes. Gzip detection, charset detection,
     /// decoding, normalization and parsing all happen inside the native library, which is given the
-    /// caller's own array: the page is never copied or decoded on the managed side.
+    /// caller's own memory: the page is never copied or decoded on the managed side, and a
+    /// <see cref="byte"/> array arrives here through the implicit conversion with no allocation.
     /// </summary>
-    /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
+    /// <param name="html">
+    /// The page's bytes: its whole length, a slice of an array, a pooled rent or a
+    /// <see cref="UnmanagedMemory.Wrap">wrapped</see> pointer. An empty buffer, which is what a null
+    /// array becomes, is a valid request that the core itself rejects as too short.
+    /// </param>
+    /// <param name="options">The options for this page, or null for the core's own defaults.</param>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
-    public static ExtractionResult ExtractFromBytes(byte[] html, ExtractionOptions? options = null)
+    public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)
     {
-        ArgumentNullException.ThrowIfNull(html);
-
-        var (code, response) = Interop.Extract(BuildHeader(options), html);
+        var (code, response) = Interop.Extract(BuildHeader(options), html.Span);
         return ReadResult(code, response);
     }
 
@@ -95,34 +99,68 @@ public static class Extractor
         ExtractionOptions? options = null,
         int maxDegreeOfParallelism = 0)
     {
-        if (pages is null)
+        // The array overload delegates rather than duplicating the loop: the two have to stay
+        // identical in ordering, failure capture and bounds, and a second copy of that is a second
+        // place for them to drift. Validation runs here so the conversion below is handed a list whose
+        // elements are known to be non-null, and so a null list is not reported as an empty one.
+        var validated = ValidateBatch(pages, maxDegreeOfParallelism, static page => page is null);
+
+        var memory = new ReadOnlyMemory<byte>[validated.Count];
+        for (var index = 0; index < memory.Length; index++)
         {
-            throw new ArgumentException("The pages to extract must not be null.", nameof(pages));
+            memory[index] = validated[index];
         }
 
-        if (pages.Count == 0)
-        {
-            throw new ArgumentException("The pages to extract must not be empty.", nameof(pages));
-        }
+        return ExtractMany(memory, options, maxDegreeOfParallelism);
+    }
 
-        ArgumentOutOfRangeException.ThrowIfNegative(maxDegreeOfParallelism);
-
-        for (var index = 0; index < pages.Count; index++)
-        {
-            if (pages[index] is null)
-            {
-                throw new ArgumentException($"The page at index {index} is null.", nameof(pages));
-            }
-        }
+    /// <summary>
+    /// The same batch over pages held as memory, so a caller whose pages are slices of a larger buffer
+    /// or rents from a pool never has to copy them into arrays first.
+    /// </summary>
+    /// <param name="pages">The pages to extract, one per item in the returned list.</param>
+    /// <param name="options">The options for every page in the batch.</param>
+    /// <param name="maxDegreeOfParallelism">
+    /// How many extractions may run at once; 0 means <see cref="Environment.ProcessorCount"/>.
+    /// </param>
+    /// <remarks>
+    /// This is one batch among a candidate set the compiler can distinguish, even though a
+    /// <see cref="ReadOnlyMemory{T}"/> element is what a <see cref="byte"/> array converts to:
+    /// <see cref="IReadOnlyList{T}"/> is covariant, and variance carries only reference and identity
+    /// conversions, so a list of arrays is no candidate for this overload at all. Both overloads
+    /// therefore resolve for the collection each caller holds, and neither call site is ambiguous.
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="pages"/> is null or empty, or one of its elements is null.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDegreeOfParallelism"/> is negative.</exception>
+    /// <exception cref="AggregateException">More than one failure was collected, so none of them can stand for the others.</exception>
+    /// <exception cref="DllNotFoundException">
+    /// The native library is missing and it was the only failure collected, so the batch reports it
+    /// as itself. Several pages against the same missing library report it inside an
+    /// <see cref="AggregateException"/> instead.
+    /// </exception>
+    /// <exception cref="EntryPointNotFoundException">
+    /// The library that loaded is stale or foreign, does not export this ABI, and was the only
+    /// failure collected. As with the missing library, several pages report it aggregated.
+    /// </exception>
+    public static IReadOnlyList<ExtractionBatchItem> ExtractMany(
+        IReadOnlyList<ReadOnlyMemory<byte>> pages,
+        ExtractionOptions? options = null,
+        int maxDegreeOfParallelism = 0)
+    {
+        // Both overloads validate through the same helper, so a rejected batch is rejected the same
+        // way whichever collection the caller held. A memory element is a value, so none is ever null.
+        var validated = ValidateBatch(pages, maxDegreeOfParallelism, static _ => false);
 
         // Written by index rather than appended: a concurrent collection would make the input order
         // depend on which page finished first, and order is part of this helper's contract.
-        var items = new ExtractionBatchItem[pages.Count];
+        var items = new ExtractionBatchItem[validated.Count];
         try
         {
             Parallel.For(
                 0,
-                pages.Count,
+                validated.Count,
                 new ParallelOptions
                 {
                     MaxDegreeOfParallelism = maxDegreeOfParallelism == 0
@@ -133,7 +171,7 @@ public static class Extractor
                 {
                     try
                     {
-                        items[index] = new ExtractionBatchItem { Result = ExtractFromBytes(pages[index], options) };
+                        items[index] = new ExtractionBatchItem { Result = ExtractFromBytes(validated[index], options) };
                     }
                     catch (TrafilaturaException exception)
                     {
@@ -149,6 +187,41 @@ public static class Extractor
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Rejects the batch arguments both overloads share, before either starts a loop, so a batch that
+    /// cannot be extracted fails at the call rather than part-way through it. It returns the list it
+    /// accepted, so a caller that has to read the elements before the loop gets them only after the
+    /// elements were checked. Whether an element can be null is the one thing the overloads do not
+    /// share: an array element is a reference and a <see cref="ReadOnlyMemory{T}"/> element is not.
+    /// </summary>
+    private static IReadOnlyList<T> ValidateBatch<T>(
+        IReadOnlyList<T>? pages,
+        int maxDegreeOfParallelism,
+        Func<T, bool> isNullElement)
+    {
+        if (pages is null)
+        {
+            throw new ArgumentException("The pages to extract must not be null.", nameof(pages));
+        }
+
+        if (pages.Count == 0)
+        {
+            throw new ArgumentException("The pages to extract must not be empty.", nameof(pages));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(maxDegreeOfParallelism);
+
+        for (var index = 0; index < pages.Count; index++)
+        {
+            if (isNullElement(pages[index]))
+            {
+                throw new ArgumentException($"The page at index {index} is null.", nameof(pages));
+            }
+        }
+
+        return pages;
     }
 
     /// <summary>

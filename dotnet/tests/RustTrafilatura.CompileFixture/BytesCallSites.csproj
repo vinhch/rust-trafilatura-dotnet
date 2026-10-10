@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A compile-only consumer: it builds against the package project and calls every byte-surface
+       call site a net8.0 consumer has. There is no test runner here and nothing to assert at run
+       time, because what this fixture proves is that the calls compile, which the C# compiler either
+       does or does not. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+
+    <!-- The repository's own Directory.Build.props sets LangVersion=latest for the library and its
+         tests, so building this fixture from the same tree would compile C# 14 and prove nothing
+         about a consumer. It has to state the version instead, and 12.0 is the one a net8.0 consumer
+         gets by default: a plain net8.0 project with no LangVersion is compiled by SDK 10.0.401 as
+         `/langversion:12.0` (observed in its build log), because the SDK caps the default at the
+         language version paired with the target framework. Pinning it here also makes a change in
+         that default visible as a diff rather than as a silent change in what this fixture covers. -->
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/RustTrafilatura/RustTrafilatura.csproj" />
+  </ItemGroup>
+
+</Project>
