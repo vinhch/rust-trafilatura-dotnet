@@ -97,19 +97,31 @@ fn header_over_cap_is_rejected() {
     let (code, json) = call(accepted, ARTICLE.as_bytes());
     assert_eq!(code, 0, "the control header must extract: {json:?}");
 
-    let over = format!(
-        r#"{{"options":{{"pruneSelector":"{}"}}}}"#,
-        "a".repeat(DEFAULT_HEADER_CAP)
+    // Not JSON on purpose. A run that parsed before it measured lengths would report serde's
+    // message for these bytes at any length, so the same bytes below and above the cap separate the
+    // two orders: under it the parser answers, over it the cap does.
+    let unparseable = "a".repeat(DEFAULT_HEADER_CAP + 1);
+    let (code, json) = call(
+        &unparseable.as_bytes()[..DEFAULT_HEADER_CAP - 1],
+        ARTICLE.as_bytes(),
     );
-    assert!(
-        over.len() > DEFAULT_HEADER_CAP,
-        "{} bytes is not over the cap",
-        over.len()
-    );
-    let (code, json) = call(over.as_bytes(), ARTICLE.as_bytes());
+    assert_eq!(code, 2, "the control header must be parsed: {json:?}");
+    let reason = rejection_reason(&json.expect("code 2 writes an InvalidRequest envelope"));
+    assert!(reason.contains("invalid header"), "{reason}");
+    assert!(!reason.contains(HEADER_CAP_ENV), "{reason}");
+
+    let (code, json) = call(unparseable.as_bytes(), ARTICLE.as_bytes());
     assert_eq!(code, 2, "a header over the cap must be rejected: {json:?}");
     let reason = rejection_reason(&json.expect("code 2 writes an InvalidRequest envelope"));
     assert!(reason.contains(HEADER_CAP_ENV), "{reason}");
+    assert!(
+        reason.contains(&DEFAULT_HEADER_CAP.to_string()),
+        "the reason must name the cap it enforced, not only the variable: {reason}"
+    );
+    assert!(
+        !reason.contains("invalid header"),
+        "the cap must be enforced before the header is parsed: {reason}"
+    );
 }
 
 #[test]
@@ -127,6 +139,10 @@ fn payload_over_cap_is_rejected_before_parsing() {
     assert_eq!(code, 2, "a payload over the cap must be rejected");
     let reason = rejection_reason(&json.expect("code 2 writes an InvalidRequest envelope"));
     assert!(reason.contains(PAYLOAD_CAP_ENV), "{reason}");
+    assert!(
+        reason.contains(&DEFAULT_PAYLOAD_CAP.to_string()),
+        "the reason must name the cap it enforced, not only the variable: {reason}"
+    );
     assert!(
         reason.contains(&(DEFAULT_PAYLOAD_CAP + 1).to_string()),
         "{reason}"
@@ -157,7 +173,34 @@ fn garbage_requests_never_panic() {
         );
         let json = json.expect("every return code writes a caller-owned buffer");
         assert_eq!(json["schemaVersion"], 1, "round {round}: {json}");
+
+        // The same bytes as the payload, under a header the contract accepts, so the core decodes
+        // and parses them instead of the wrapper rejecting the request first.
+        let (code, json) = call(TEXT_ONLY, &bytes);
+        assert!(
+            matches!(code, 0 | 1),
+            "round {round}: a valid header with a garbage payload must reach the core, got code {code}"
+        );
+        let json = json.expect("every return code writes a caller-owned buffer");
+        assert_eq!(json["schemaVersion"], 1, "round {round}: {json}");
+        if code == 1 {
+            assert_ne!(
+                json["error"]["kind"], "InvalidRequest",
+                "round {round}: the contract accepted the header: {json}"
+            );
+        }
     }
+
+    // The rounds above prove nothing about the payload being read, because every garbage payload
+    // and the empty one reach the same core error. These bytes are the gzip magic, which only the
+    // core classifies: a call that dropped or ignored the payload would report the empty-input
+    // OutputTooShort instead of the inflater's Io.
+    let mut gzipish = vec![0x1f, 0x8b, 0x08, 0x00, 0x00];
+    gzipish.extend_from_slice(&pseudo_random(&mut seed, 59));
+    let (code, json) = call(TEXT_ONLY, &gzipish);
+    assert_eq!(code, 1, "{json:?}");
+    let json = json.expect("code 1 writes the error envelope");
+    assert_eq!(json["error"]["kind"], "Io", "{json}");
 }
 
 #[test]

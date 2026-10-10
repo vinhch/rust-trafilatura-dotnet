@@ -1,9 +1,9 @@
 #![cfg(feature = "test-hooks")]
 //! The live-output-buffer counter, in a file of its own.
 //!
-//! Both tests assert on one process-global counter, so they live in a binary that measures nothing
-//! else and they serialize against each other: a second test in this binary running in parallel
-//! would hand its +1 and -1 across a measurement window and make a balanced counter look
+//! Every test here asserts on one process-global counter, so they live in a binary that measures
+//! nothing else and they serialize against each other: a second test in this binary running in
+//! parallel would hand its +1 and -1 across a measurement window and make a balanced counter look
 //! unbalanced. The two `test-hooks` exports this needs are absent from every build without the
 //! feature, and this whole file compiles out with it.
 
@@ -93,5 +93,35 @@ fn allocation_counter_balances_over_many_calls() {
         live_buffers(),
         baseline,
         "{CALLS} extract and free cycles must return the counter to its starting value"
+    );
+}
+
+#[test]
+fn concurrent_extract_and_free_returns_the_counter_to_baseline() {
+    const WORKERS: usize = 8;
+    const CALLS_PER_WORKER: usize = 100;
+
+    // The sequential tests above cannot separate an atomic update from a read-modify-write: with one
+    // thread there is no interleaving to lose. Only the final value is asserted, so the test does not
+    // race the counter it measures.
+    let _guard = lock_counter();
+    let baseline = live_buffers();
+
+    std::thread::scope(|scope| {
+        for _ in 0..WORKERS {
+            scope.spawn(|| {
+                for _ in 0..CALLS_PER_WORKER {
+                    let (out, len, cap) = extract_owned();
+                    unsafe { rt_free(out, len, cap) };
+                }
+            });
+        }
+    });
+
+    assert_eq!(
+        live_buffers(),
+        baseline,
+        "{} cycles on {WORKERS} threads must return the counter to its starting value",
+        WORKERS * CALLS_PER_WORKER
     );
 }

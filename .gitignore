@@ -432,3 +432,7 @@ target/
 
 # Local scratch notes and drafts; never committed or packaged.
 /.work/
+
+# cargo-mutants writes its outcome files and per-mutant diffs here on every run, including the
+# plain `cargo mutants` the weekly job runs, and archives the run before it beside this directory.
+/rust/mutants.out*/

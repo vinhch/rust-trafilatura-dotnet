@@ -328,6 +328,8 @@ const GZIP: &[u8] = &[
 mod tests {
     use super::*;
     use crate::contract::parse_request;
+    use chrono::TimeZone;
+    use rust::rust_htmldate::Timezone;
     use serde_json::json;
 
     const TEXT_ONLY: &[u8] = br#"{"responseFields":["contentText"]}"#;
@@ -337,13 +339,14 @@ mod tests {
 
     #[test]
     fn bytes_path_matches_core_on_inline_fixtures() {
-        for html in FIXTURES {
+        for (index, html) in FIXTURES.iter().enumerate() {
             let request = parse_request(TEXT_ONLY).unwrap();
             let response = build(&request, html.as_bytes());
             let expected = rust::extract(html.as_bytes(), &Options::default()).unwrap();
             assert_eq!(
                 response.content_text.as_deref(),
-                Some(expected.content_text.as_str())
+                Some(expected.content_text.as_str()),
+                "FIXTURES[{index}] differs between the byte path and the core"
             );
         }
     }
@@ -531,6 +534,57 @@ mod tests {
     }
 
     #[test]
+    fn metadata_json_moves_every_core_field_to_its_own_wire_key() {
+        // Distinct values in every core field, so a swap between two of them is visible. The wire
+        // shape is asserted separately: a rename passes a value-for-value comparison.
+        let metadata = Metadata {
+            title: "f-title".to_owned(),
+            author: "f-author".to_owned(),
+            url: "f-url".to_owned(),
+            hostname: "f-hostname".to_owned(),
+            description: "f-description".to_owned(),
+            sitename: "f-sitename".to_owned(),
+            date: Timezone::Utc
+                .with_ymd_and_hms(2026, 9, 29, 0, 0, 0)
+                .unwrap(),
+            categories: vec!["f-category".to_owned()],
+            tags: vec!["f-tag".to_owned()],
+            id: "f-id".to_owned(),
+            fingerprint: "f-fingerprint".to_owned(),
+            license: "f-license".to_owned(),
+            language: "f-language".to_owned(),
+            image: "f-image".to_owned(),
+            page_type: "f-pageType".to_owned(),
+        };
+        let value = serde_json::to_value(metadata_json(metadata)).unwrap();
+        let object = value.as_object().expect("metadata serializes to an object");
+        assert_eq!(
+            object.len(),
+            15,
+            "the metadata object has one key per field"
+        );
+        for (key, expected) in [
+            ("title", serde_json::json!("f-title")),
+            ("author", serde_json::json!("f-author")),
+            ("url", serde_json::json!("f-url")),
+            ("hostname", serde_json::json!("f-hostname")),
+            ("description", serde_json::json!("f-description")),
+            ("sitename", serde_json::json!("f-sitename")),
+            ("date", serde_json::json!("2026-09-29T00:00:00Z")),
+            ("categories", serde_json::json!(["f-category"])),
+            ("tags", serde_json::json!(["f-tag"])),
+            ("id", serde_json::json!("f-id")),
+            ("fingerprint", serde_json::json!("f-fingerprint")),
+            ("license", serde_json::json!("f-license")),
+            ("language", serde_json::json!("f-language")),
+            ("image", serde_json::json!("f-image")),
+            ("pageType", serde_json::json!("f-pageType")),
+        ] {
+            assert_eq!(object.get(key), Some(&expected), "{key} in {value}");
+        }
+    }
+
+    #[test]
     fn response_keeps_its_shape_on_failure() {
         let response = build(&parse_request(TEXT_ONLY).unwrap(), &[]);
         let value = serde_json::to_value(&response).unwrap();
@@ -555,6 +609,66 @@ mod tests {
             response.metadata.is_none(),
             "metadata stays null on failure"
         );
+    }
+
+    #[test]
+    fn every_response_key_is_present_on_success_and_on_failure() {
+        // An absent key is not a null value. A `skip_serializing_if` only drops a key whose value is
+        // `None`, so the requests below are chosen to leave every key `None` in at least one of them:
+        // a response that populates all seven cannot show that the key survives being absent.
+        const KEYS: [&str; 7] = [
+            "schemaVersion",
+            "contentText",
+            "commentsText",
+            "contentHtml",
+            "commentsHtml",
+            "metadata",
+            "error",
+        ];
+        let cases: [(&str, &[u8], &[u8]); 5] = [
+            ("default fields on a page", br#"{}"#, FIXTURES[0].as_bytes()),
+            ("text only on a page", TEXT_ONLY, FIXTURES[0].as_bytes()),
+            (
+                "comments only on a page",
+                br#"{"responseFields":["commentsText"]}"#,
+                FIXTURES[0].as_bytes(),
+            ),
+            ("text only on a failure", TEXT_ONLY, &[]),
+            ("every field on a failure", EVERYTHING, &[]),
+        ];
+        for (case, header, payload) in cases {
+            let value =
+                serde_json::to_value(build(&parse_request(header).unwrap(), payload)).unwrap();
+            let object = value.as_object().expect("a response is a JSON object");
+            assert_eq!(object.len(), KEYS.len(), "{case}: {value}");
+            for key in KEYS {
+                assert!(object.contains_key(key), "{case} must carry {key}: {value}");
+            }
+        }
+    }
+
+    #[test]
+    fn failure_fills_only_the_content_field_that_was_requested() {
+        // One field per request: with every field requested at once, a swapped arm in the failure
+        // branch still fills all four, so the swap would pass a test that only requests everything.
+        const FIELDS: [&str; 4] = ["contentText", "commentsText", "contentHtml", "commentsHtml"];
+        for requested in FIELDS {
+            let header = format!(r#"{{"responseFields":["{requested}"]}}"#);
+            let value =
+                serde_json::to_value(build(&parse_request(header.as_bytes()).unwrap(), &[]))
+                    .unwrap();
+            for field in FIELDS {
+                if field == requested {
+                    assert_eq!(value[field], "", "{requested} was requested: {value}");
+                } else {
+                    assert!(
+                        value[field].is_null(),
+                        "{requested} was the only field requested, so {field} must stay null: {value}"
+                    );
+                }
+            }
+            assert!(value["metadata"].is_null(), "{value}");
+        }
     }
 
     #[test]

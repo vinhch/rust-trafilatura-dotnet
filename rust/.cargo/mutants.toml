@@ -1,0 +1,12 @@
+# src/lib.rs is the C ABI glue: the entry points, the out-parameter and cap checks, the pointer views
+# and the buffer ownership. Nothing inside the crate calls an export, so a test binary reaches it only
+# through the same extern "C" door a foreign caller uses -- but mutating it is not worthless: measured
+# with this exclusion lifted, the tests kill 68 of its 85 mutants, so the file is reachable and the
+# suite does cover most of it. What decides the exclusion is the residue. Thirteen survive, and they
+# cluster where no test can look: the stack-size arithmetic (0, 1 and a huge value all leave these
+# documents extracting, so the mutants are equal-behaviour), the test-hooks-gated live-buffer counter
+# that the default feature set does not compile, and the panic-message path, whose hook swallows
+# libtest's own output. That residue would be a permanent weekly survivor list, so the mutant set is
+# confined to the two modules that hold the logic the tests aim at: src/contract.rs and src/engine.rs.
+# Spec section 11 carries the measurement and the narrower filter that would add signal.
+exclude_globs = ["src/lib.rs"]

@@ -350,6 +350,16 @@ mod tests {
                 "{header:?} must be rejected"
             );
         }
+        // The two causes do not read the same way: the reason names the entry it refused, so a
+        // caller that misspelled a field is told which one, and an empty list is told what it is.
+        assert!(matches!(
+            parse_request(br#"{"responseFields":["markdown"]}"#),
+            Err(RequestError::InvalidRequest(reason)) if reason.contains("markdown")
+        ));
+        assert!(matches!(
+            parse_request(br#"{"responseFields":[]}"#),
+            Err(RequestError::InvalidRequest(reason)) if reason.contains("must not be empty")
+        ));
         let request = parse_request(
             br#"{"responseFields":["contentHtml","metadata","commentsHtml","commentsText","contentText"]}"#,
         )

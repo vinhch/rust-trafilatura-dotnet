@@ -44,7 +44,11 @@ fn take_json(out: *mut u8, len: usize, cap: usize) -> Option<Value> {
     Some(serde_json::from_slice(&bytes).expect("the response must be UTF-8 JSON"))
 }
 
-/// Asserts that a failure envelope leaves every content field and `metadata` null.
+/// Asserts that a failure envelope carries every content field and `metadata` as an explicit null.
+///
+/// The key must be there as well as be null. `Value`'s index returns `Null` for an absent key, so an
+/// assertion on the value alone cannot tell a documented null from a key that serialization
+/// dropped, which is what section 6's shape stability claim rests on.
 fn assert_failure_envelope_is_empty(json: &Value, case: &str) {
     for key in [
         "contentText",
@@ -53,7 +57,10 @@ fn assert_failure_envelope_is_empty(json: &Value, case: &str) {
         "commentsHtml",
         "metadata",
     ] {
-        assert!(json[key].is_null(), "{case}: {key} must stay null");
+        assert!(
+            json.get(key).is_some_and(Value::is_null),
+            "{case}: {key} must be present and null, not absent"
+        );
     }
 }
 
@@ -123,9 +130,13 @@ fn rt_version_reports_abi_schema_and_crate() {
 
 #[test]
 fn null_out_params_are_rejected_without_writing() {
+    // Sentinels rather than zeros: a rejected call that wrote a zero into the out-parameters would
+    // be invisible against a zero starting point.
+    const LEN: usize = 7;
+    const CAP: usize = 9;
+
     let header = br#"{"responseFields":["contentText"]}"#;
     let payload = HTML.as_bytes();
-    let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let extracted = |out: *mut *mut u8, out_len: *mut usize, out_cap: *mut usize| unsafe {
         rt_extract(
             header.as_ptr(),
@@ -138,24 +149,52 @@ fn null_out_params_are_rejected_without_writing() {
         )
     };
 
+    let (mut len, mut cap) = (LEN, CAP);
     assert_eq!(extracted(std::ptr::null_mut(), &mut len, &mut cap), 2);
+    assert_eq!(
+        (len, cap),
+        (LEN, CAP),
+        "a rejected call must not write *out_len or *out_cap"
+    );
+
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let mut cap = CAP;
     assert_eq!(extracted(&mut out, std::ptr::null_mut(), &mut cap), 2);
     assert!(out.is_null(), "a rejected call must not write *out");
+    assert_eq!(cap, CAP, "a rejected call must not write *out_cap");
+
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let mut len = LEN;
     assert_eq!(extracted(&mut out, &mut len, std::ptr::null_mut()), 2);
     assert!(out.is_null(), "a rejected call must not write *out");
+    assert_eq!(len, LEN, "a rejected call must not write *out_len");
 
+    let (mut len, mut cap) = (LEN, CAP);
     assert_eq!(
         unsafe { rt_version(std::ptr::null_mut(), &mut len, &mut cap) },
         2
     );
     assert_eq!(
+        (len, cap),
+        (LEN, CAP),
+        "rt_version must not write the lengths"
+    );
+
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let mut cap = CAP;
+    assert_eq!(
         unsafe { rt_version(&mut out, std::ptr::null_mut(), &mut cap) },
         2
     );
     assert!(out.is_null(), "a rejected call must not write *out");
+    assert_eq!(cap, CAP, "rt_version must not write *out_cap");
+
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let mut len = LEN;
     assert_eq!(
         unsafe { rt_version(&mut out, &mut len, std::ptr::null_mut()) },
         2
     );
     assert!(out.is_null(), "a rejected call must not write *out");
+    assert_eq!(len, LEN, "rt_version must not write *out_len");
 }

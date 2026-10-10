@@ -138,6 +138,16 @@ jobs:
 
   mutants:
     name: mutants
+    needs: changes
+    # Rust-only, so it follows the same `changes` output as `core-untouched` and `bench`: a pull
+    # request that cannot change a mutant must not install a Rust toolchain and run cargo-mutants.
+    # `--relative` in the step below prunes every change outside rust/, so a documentation-only range
+    # yields an empty diff file, and the step's empty-diff guard must keep its one real meaning: a
+    # rust-touching pull request whose range could not be resolved.
+    # A schedule always runs the whole crate, a pull request runs only when rust/ changed, and a push
+    # runs neither: both steps skip there, which would still show a green `mutants` check that measured
+    # nothing.
+    if: github.event_name == 'schedule' || (github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true')
     # The whole-crate run mutates every function in the crate, so the job is bounded rather than
     # trusted to finish: the pull request run is minutes, the weekly one is the long half.
     timeout-minutes: 120
