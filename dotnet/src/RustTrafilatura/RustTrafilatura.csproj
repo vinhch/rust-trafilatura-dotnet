@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>RustTrafilatura</PackageId>
+    <Version>2.2.8</Version>
+    <Authors>vinhch</Authors>
+    <Description>In-process HTML text and metadata extraction for .NET, over the published rust-trafilatura crate and a length-delimited C ABI.</Description>
+    <PackageLicenseExpression>Apache-2.0 AND BSD-3-Clause</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/vinhch/rust-trafilatura-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/vinhch/rust-trafilatura-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>trafilatura;html;extraction;text-extraction;readability;native</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The interop layer stays internal: the ABI is an implementation detail, and only the test
+         assembly reaches it, for the request shapes the public API cannot produce. -->
+    <InternalsVisibleTo Include="RustTrafilatura.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Explicit even on net8.0: the contract is System.Text.Json's, so the package states it. -->
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+  </ItemGroup>
+
+</Project>

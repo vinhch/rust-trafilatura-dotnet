@@ -1,0 +1,57 @@
+<Project>
+
+  <!-- Settings shared by the package and its tests. The SDK imports this file before each
+       project body, so nothing here may read a property a project sets later. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Probe P4: a ProjectReference does not go through NuGet's RID resolution, so nothing puts
+       runtimes/<rid>/native next to the test assembly unless this file does. HostRid must be
+       derived here, at evaluation time, and from the environment rather than from a SDK property:
+       this file is imported before the .NET SDK defines its own RID. The derivations mirror
+       scripts/build.ps1, because the staged directory name and this one have to agree.
+       Pass -p:HostRid=<rid> to stage another RID. -->
+  <PropertyGroup>
+    <!-- A 32-bit build tool on 64-bit Windows reports the emulated architecture. -->
+    <_HostArchitecture Condition="'$(PROCESSOR_ARCHITEW6432)' != ''">$(PROCESSOR_ARCHITEW6432)</_HostArchitecture>
+    <_HostArchitecture Condition="'$(_HostArchitecture)' == ''">$(PROCESSOR_ARCHITECTURE)</_HostArchitecture>
+    <!-- Linux and macOS do not set PROCESSOR_ARCHITECTURE; MSBuild itself always knows. -->
+    <_HostArchitecture Condition="'$(_HostArchitecture)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_HostArchitecture>
+    <_HostArchitecture Condition="'$(_HostArchitecture)' == 'AMD64' or '$(_HostArchitecture)' == 'X86' or '$(_HostArchitecture)' == 'X64'">x64</_HostArchitecture>
+    <_HostArchitecture Condition="'$(_HostArchitecture)' == 'ARM64' or '$(_HostArchitecture)' == 'Arm64'">arm64</_HostArchitecture>
+
+    <_HostOperatingSystem Condition="$([MSBuild]::IsOSPlatform('Windows'))">win</_HostOperatingSystem>
+    <_HostOperatingSystem Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux</_HostOperatingSystem>
+    <_HostOperatingSystem Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</_HostOperatingSystem>
+
+    <HostRid Condition="'$(HostRid)' == ''">$(_HostOperatingSystem)-$(_HostArchitecture)</HostRid>
+    <NativeLibraryDirectory>$(MSBuildThisFileDirectory)src/RustTrafilatura/runtimes/$(HostRid)/native</NativeLibraryDirectory>
+  </PropertyGroup>
+
+  <!-- Copying the library beside the test assembly is what makes
+       [LibraryImport("rust_trafilatura_ffi")] resolve. The package project itself is skipped:
+       its own output is not a deployment, and consumers get the RID assets through NuGet. -->
+  <Target Name="CopyNativeLibrary"
+          AfterTargets="Build"
+          Condition="'$(MSBuildProjectName)' != 'RustTrafilatura'">
+    <!-- An unstaged RID or a wrong HostRid would otherwise be a silent no-op here and surface much
+         later as a runtime DllNotFoundException, so it is reported at build time. A warning, not an
+         error: a plain build still succeeds, while -warnaserror promotes it like any other warning.
+         Task 10's test scripts turn staleness into a hard failure for the runs that need the library. -->
+    <Warning Condition="!Exists('$(NativeLibraryDirectory)')"
+             Text="No native library is staged for $(HostRid) at $(NativeLibraryDirectory), so nothing was copied beside $(MSBuildProjectName) and the tests will fail at runtime. Build it with scripts/build.ps1 (or scripts/build.sh)." />
+    <ItemGroup Condition="Exists('$(NativeLibraryDirectory)')">
+      <NativeLibrary Include="$(NativeLibraryDirectory)/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeLibrary)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(NativeLibraryDirectory)')" />
+  </Target>
+
+</Project>
