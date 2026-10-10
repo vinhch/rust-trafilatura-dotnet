@@ -19,9 +19,8 @@
     <InternalsVisibleTo Include="RustTrafilatura.Tests" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Explicit even on net8.0: the contract is System.Text.Json's, so the package states it. -->
-    <PackageReference Include="System.Text.Json" Version="8.0.6" />
-  </ItemGroup>
+  <!-- No System.Text.Json reference: both target frameworks carry that assembly in box, and NuGet
+       prunes a net8.0-only reference out of a multi-targeted package, so declaring one would reach no
+       consumer and change nothing for this project's own compile. -->
 
 </Project>

@@ -49,13 +49,27 @@ public sealed class TrafilaturaException : Exception
 }
 
 /// <summary>How much of the page the extractor keeps, mirroring the core's `ExtractionFocus`.</summary>
+/// <remarks>
+/// The wire names are stated twice on purpose, once per asset: `[JsonStringEnumMemberName]` exists from
+/// `net9.0` on, and the `net8.0` asset states the same names in HeaderContext.cs's converters. Both
+/// spellings have to stay equal to the core's, which is what the byte-identity test pins.
+/// </remarks>
 public enum ExtractionFocus
 {
     /// <summary>The core's default: neither recall nor precision is preferred.</summary>
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("balanced")]
+#endif
     Balanced,
 
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("favorRecall")]
+#endif
     FavorRecall,
 
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("favorPrecision")]
+#endif
     FavorPrecision,
 }
 
@@ -63,12 +77,24 @@ public enum ExtractionFocus
 public enum HtmlDateMode
 {
     /// <summary>The core's default.</summary>
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("default")]
+#endif
     Default,
 
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("fast")]
+#endif
     Fast,
 
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("extensive")]
+#endif
     Extensive,
 
+#if NET9_0_OR_GREATER
+    [JsonStringEnumMemberName("disabled")]
+#endif
     Disabled,
 }
 

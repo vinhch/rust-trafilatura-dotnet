@@ -3,7 +3,9 @@
   <!-- Settings shared by the package and its tests. The SDK imports this file before each
        project body, so nothing here may read a property a project sets later. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- Both assets are compiled as C# 14 (LangVersion below), so no language behaviour differs
+         between them; the second asset exists for the framework's own runtime and BCL reach. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
@@ -35,10 +37,12 @@
 
   <!-- Copying the library beside the test assembly is what makes
        [LibraryImport("rust_trafilatura_ffi")] resolve. The package project itself is skipped:
-       its own output is not a deployment, and consumers get the RID assets through NuGet. -->
+       its own output is not a deployment, and consumers get the RID assets through NuGet. The
+       TargetFramework check skips the cross-targeting pass, which has no asset directory to copy
+       into; the copy belongs to each asset's own output. -->
   <Target Name="CopyNativeLibrary"
           AfterTargets="Build"
-          Condition="'$(MSBuildProjectName)' != 'RustTrafilatura'">
+          Condition="'$(MSBuildProjectName)' != 'RustTrafilatura' and '$(TargetFramework)' != ''">
     <!-- An unstaged RID or a wrong HostRid would otherwise be a silent no-op here and surface much
          later as a runtime DllNotFoundException, so it is reported at build time. A warning, not an
          error: a plain build still succeeds, while -warnaserror promotes it like any other warning.

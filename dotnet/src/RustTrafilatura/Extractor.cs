@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RustTrafilatura;
 
@@ -12,13 +11,6 @@ namespace RustTrafilatura;
 /// </summary>
 public static class Extractor
 {
-    private static readonly JsonSerializerOptions HeaderJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
-
     private static readonly Lazy<string> VersionDocument = new(ReadVersionDocument);
 
     /// <summary>
@@ -174,11 +166,13 @@ public static class Extractor
         exception.InnerExceptions.Count == 1 ? exception.InnerExceptions[0] : exception;
 
     /// <summary>
-    /// Assembles the request header. `responseFields`, `url` and `inputEncoding` belong at its top
-    /// level while every core option belongs inside `options`, and a member that was not set is left
-    /// out so the native side applies its own default instead of a value this layer invented.
+    /// Assembles the request header as the bytes that cross the ABI. `responseFields`, `url` and
+    /// `inputEncoding` belong at its top level while every core option belongs inside `options`, and a
+    /// member that was not set is left out so the native side applies its own default instead of a
+    /// value this layer invented.
     /// </summary>
-    private static byte[] BuildHeader(ExtractionOptions? options) =>
+    /// <remarks>Internal so the header's bytes, not only its parsed shape, are assertable.</remarks>
+    internal static byte[] BuildHeader(ExtractionOptions? options) =>
         JsonSerializer.SerializeToUtf8Bytes(
             new RequestHeader
             {
@@ -187,7 +181,7 @@ public static class Extractor
                 InputEncoding = options?.InputEncoding,
                 Options = options,
             },
-            HeaderJsonOptions);
+            HeaderContext.Default.RequestHeader);
 
     /// <summary>
     /// The request header as JSON, for a caller that needs to see the wire shape itself. The element is
@@ -365,21 +359,4 @@ public static class Extractor
         "Panic" => TrafilaturaErrorKind.Panic,
         _ => TrafilaturaErrorKind.Unknown,
     };
-
-    /// <summary>
-    /// The wire header. <see cref="HeaderJsonOptions"/> gives it camelCase names and drops unset
-    /// members, so an option the caller left alone cannot shadow the native library's default.
-    /// </summary>
-    private sealed class RequestHeader
-    {
-        public int SchemaVersion { get; init; } = 1;
-
-        public string? Url { get; init; }
-
-        public string? InputEncoding { get; init; }
-
-        public List<string>? ResponseFields { get; init; }
-
-        public ExtractionOptions? Options { get; init; }
-    }
 }

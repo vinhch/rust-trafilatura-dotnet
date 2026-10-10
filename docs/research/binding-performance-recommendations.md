@@ -64,8 +64,11 @@ overload ("Use the overload that takes a `JsonTypeInfo` or `JsonSerializerContex
 asks for `System.Text.Json` source generation generally ("Use System.Text.Json source generation for
 native AOT applications"). Both messages are quoted in full in section 8 of the main file; their text is
 the build output of the committed `AotAnalyzerProbe`. Set
-`<TargetFrameworks>net8.0;net10.0</TargetFrameworks>` and keep the `System.Text.Json` reference on
-`net8.0`.
+`<TargetFrameworks>net8.0;net10.0</TargetFrameworks>`. The recommendation to keep the
+`System.Text.Json` reference on `net8.0` is superseded by measurement: NuGet pruning drops that dependency
+from the packed nuspec once the project multi-targets, and deleting the reference leaves both assets
+building and testing clean, so the shipped package declares none and a consumer that wants a particular
+patch level references it itself.
 
 Do not use `JsonSourceGenerationMode.Serialization` (the fast-path mode): its `JsonTypeInfo` carries
 no property metadata, so reaching it through a resolver-based options object throws (observed: the

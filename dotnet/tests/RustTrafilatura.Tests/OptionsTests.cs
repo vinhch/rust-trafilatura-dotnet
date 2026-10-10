@@ -206,17 +206,81 @@ public sealed class OptionsTests
     }
 
     /// <summary>
+    /// Pins the header's bytes for one fixed option set. The literal was recorded from the
+    /// reflection-based serializer before the source-generated one replaced it, so it measures the
+    /// contract as it was rather than restating the new implementation; the test runs on both assets,
+    /// where the enum spellings come from different code. Both enums are spelled away from their
+    /// defaults and a header key, a string, a bool, a number and a nested object are present, so a
+    /// reordered key, a quoting change or an enum spelling cannot pass unnoticed.
+    /// </summary>
+    [Fact]
+    public void Header_Json_Is_Identical_Across_TargetFrameworks()
+    {
+        const string Expected =
+            """{"schemaVersion":1,"url":"https://example.test/page","inputEncoding":"utf-8","responseFields":["contentText"],"options":{"targetLanguage":"en","focus":"favorPrecision","excludeComments":true,"maxTreeSize":4000,"htmlDateMode":"extensive","config":{"minOutputSize":2}}}""";
+
+        var header = Extractor.BuildHeader(new ExtractionOptions
+        {
+            ResponseFields = ["contentText"],
+            Url = "https://example.test/page",
+            InputEncoding = "utf-8",
+            TargetLanguage = "en",
+            Focus = ExtractionFocus.FavorPrecision,
+            HtmlDateMode = HtmlDateMode.Extensive,
+            ExcludeComments = true,
+            MaxTreeSize = 4000,
+            Config = new ExtractionConfig { MinOutputSize = 2 },
+        });
+
+        Assert.Equal(Encoding.UTF8.GetBytes(Expected), header);
+    }
+
+    /// <summary>
+    /// A value outside the declared members has no spelling the core accepts, so it has to cross as the
+    /// number the caller cast: the core then rejects that request, while a substituted name would be a
+    /// different request it answers. Both assets must produce those same bytes, which is why the
+    /// expectation is one literal asserted on each of them.
+    /// </summary>
+    [Fact]
+    public void Header_Json_Is_Identical_Across_TargetFrameworks_For_Unknown_Enum_Values()
+    {
+        const string Expected =
+            """{"schemaVersion":1,"options":{"focus":99,"htmlDateMode":42}}""";
+
+        var header = Extractor.BuildHeader(new ExtractionOptions
+        {
+            Focus = (ExtractionFocus)99,
+            HtmlDateMode = (HtmlDateMode)42,
+        });
+
+        Assert.Equal(Encoding.UTF8.GetBytes(Expected), header);
+    }
+
+    /// <summary>
     /// The enums travel by name, and these are the names: the native side rejects any other
-    /// spelling, so a value it accepts is the only value worth emitting.
+    /// spelling, so a value it accepts is the only value worth emitting. Every member is asserted
+    /// because each asset spells the two enums in its own code (`[JsonStringEnumMemberName]` from
+    /// `net9.0` on, the converters in HeaderContext.cs before that) and the two tables can drift.
     /// </summary>
     [Fact]
     public void Enum_Options_Use_The_Core_Spellings()
     {
-        var focus = Extractor.BuildHeaderJson(new ExtractionOptions { Focus = ExtractionFocus.FavorPrecision });
-        var dateMode = Extractor.BuildHeaderJson(new ExtractionOptions { HtmlDateMode = HtmlDateMode.Extensive });
+        Assert.Equal("balanced", FocusWire(ExtractionFocus.Balanced));
+        Assert.Equal("favorRecall", FocusWire(ExtractionFocus.FavorRecall));
+        Assert.Equal("favorPrecision", FocusWire(ExtractionFocus.FavorPrecision));
 
-        Assert.Equal("favorPrecision", focus.GetProperty("options").GetProperty("focus").GetString());
-        Assert.Equal("extensive", dateMode.GetProperty("options").GetProperty("htmlDateMode").GetString());
+        Assert.Equal("default", DateModeWire(HtmlDateMode.Default));
+        Assert.Equal("fast", DateModeWire(HtmlDateMode.Fast));
+        Assert.Equal("extensive", DateModeWire(HtmlDateMode.Extensive));
+        Assert.Equal("disabled", DateModeWire(HtmlDateMode.Disabled));
+
+        static string FocusWire(ExtractionFocus focus) =>
+            Extractor.BuildHeaderJson(new ExtractionOptions { Focus = focus })
+                .GetProperty("options").GetProperty("focus").GetString()!;
+
+        static string DateModeWire(HtmlDateMode mode) =>
+            Extractor.BuildHeaderJson(new ExtractionOptions { HtmlDateMode = mode })
+                .GetProperty("options").GetProperty("htmlDateMode").GetString()!;
     }
 
     /// <summary>
