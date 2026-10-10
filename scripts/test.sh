@@ -11,8 +11,9 @@ usage() {
   cat <<EOF
 Usage: scripts/$script_name
 
-Runs every command CI runs: cargo fmt --check, cargo clippy --locked --all-targets -- -D warnings
-and cargo test --locked in rust/, then dotnet build -c Release and dotnet test -c Release in dotnet/.
+Runs every command CI runs: cargo fmt --check, cargo clippy --locked --all-targets -- -D warnings,
+cargo test --locked and a second cargo test --locked --features test-hooks in rust/, then
+dotnet build -c Release and dotnet test -c Release in dotnet/.
 The staged native library is verified against its build stamp first, so a stale or placeholder
 artifact fails the run instead of passing against nothing.
 
@@ -74,12 +75,13 @@ cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings |
 echo "$script_name: cargo test --locked"
 cargo test --locked --manifest-path "$manifest" || fail "cargo test failed with exit code $?"
 
-# The test-hooks feature gates four tests, three of them spec section 11 rows
+# The test-hooks feature gates four tests, three of them rows in section 11's test table
 # (`free_round_trip_restores_allocation_counter`, `allocation_counter_balances_over_many_calls` and
-# `panic_is_caught`; the fourth, `concurrent_extract_and_free_returns_the_counter_to_baseline`, is the
-# folded-gap table row). Without this run they are compiled out, and `rust/tests/allocation.rs`, gated
-# whole, reports "running 0 tests": a green suite that executed nothing. The staged library stays the
-# default build, because scripts/release.* refuses an artifact that exports the feature's symbols.
+# `panic_is_caught`; the fourth, `concurrent_extract_and_free_returns_the_counter_to_baseline`, is a row
+# in that section's mutation table). Without this run they are compiled out, and
+# `rust/tests/allocation.rs`, gated whole, reports "running 0 tests": a green suite that executed
+# nothing. The staged library stays the default build, because scripts/release.* refuses an artifact
+# that exports the feature's symbols.
 echo "$script_name: cargo test --locked --features test-hooks"
 cargo test --locked --manifest-path "$manifest" --features test-hooks ||
   fail "cargo test --features test-hooks failed with exit code $?"
