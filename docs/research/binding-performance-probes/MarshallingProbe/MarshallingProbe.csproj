@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Deliberately outside dotnet/: no Directory.Build.props above this directory sets LangVersion,
+       analyzers or warnings, so each case compiles under the SDK's own defaults for net8.0. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>MarshallingProbe</RootNamespace>
+    <AssemblyName>MarshallingProbe</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The generated marshalling code is the evidence for the span and array rows. -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+</Project>

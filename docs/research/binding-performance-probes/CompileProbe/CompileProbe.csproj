@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Multi-targets so the same source can be built at net8.0's default language version, at net8.0
+       with LangVersion=latest, and at net10.0's default, which are the three configurations section 5
+       of binding-performance.md reports. No LangVersion is set here: the SDK default for the target
+       framework is the point of the first and third configurations. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>CompileProbe</RootNamespace>
+    <AssemblyName>CompileProbe</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

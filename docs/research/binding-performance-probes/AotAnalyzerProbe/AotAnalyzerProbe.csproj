@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>AotAnalyzerProbe</RootNamespace>
+    <AssemblyName>AotAnalyzerProbe</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Assigns a default of true to IsTrimmable, EnableTrimAnalyzer, EnableSingleFileAnalyzer and
+         EnableAotAnalyzer, which is what makes the reflection call below report IL2026 and IL3050. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- The CASE_LIBRARYIMPORT case declares a pointer-parameter import. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>
