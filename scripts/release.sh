@@ -32,6 +32,8 @@ test-hooks symbol is refused, because that feature is built only for the test su
 
   --allow-partial  Pack the RIDs that are staged and report them, instead of refusing when one
                    of the five is missing. The RIDs that are present must still be complete.
+                   Refused together with --push and --push-only: what it packs is not a release
+                   package.
   --push           Publish the package with the NUGET_API_KEY environment variable. A push
                    that is already on the feed is skipped, not an error.
   --push-only      Publish the package already in artifacts/ and pack nothing, which is what the
@@ -112,6 +114,12 @@ done
 
 if [ "$push" = true ] && [ "$push_only" = true ]; then
   fail "--push and --push-only are mutually exclusive: --push packs and pushes, --push-only pushes the package already in artifacts/."
+fi
+
+# A partial package is what this script itself calls "not a release package", so a push must not be
+# able to carry one: publishing is the one step nothing later can undo.
+if [ "$allow_partial" = true ] && { [ "$push" = true ] || [ "$push_only" = true ]; }; then
+  fail "--allow-partial cannot be combined with --push or --push-only: --allow-partial packs the RIDs that happen to be staged and is not a release package, so a push would publish an incomplete one. Stage all five RIDs and pack without --allow-partial."
 fi
 
 # Checked before anything is packed: a missing key discovered after a successful pack would leave a

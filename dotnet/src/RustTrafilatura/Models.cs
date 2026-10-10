@@ -195,7 +195,7 @@ public sealed class ExtractionOptions
     /// <summary>Whether a document without essential metadata is rejected. Null is the core's default of false.</summary>
     public bool? HasEssentialMetadata { get; set; }
 
-    /// <summary>An upper bound on the tree size in bytes, or null for the core's default of 0, meaning no limit.</summary>
+    /// <summary>An upper bound on the number of direct children the extracted body may have, or null for the core's default of 0, meaning no limit. It bounds the shape of the extraction's output, not the size or the nesting depth of the input.</summary>
     public long? MaxTreeSize { get; set; }
 
     /// <summary>How hard to look for a date. Null is the core's default of <see cref="HtmlDateMode.Default"/>.</summary>

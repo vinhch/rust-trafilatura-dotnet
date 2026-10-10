@@ -7,9 +7,12 @@ namespace RustTrafilatura.Tests;
 /// documents pass, which are reported as a mismatch, and what a caller reads off the exception.
 /// </summary>
 /// <remarks>
-/// Every case drives <see cref="Extractor.CheckContract(string)"/>, which takes the document as text.
-/// The alternative - a native library built for a different ABI - is not something a test can load,
-/// and the first-use path throws exactly what this method returns.
+/// The document cases drive <see cref="Extractor.CheckContract(string)"/>, which takes the document as
+/// text; the failing-read case drives <see cref="Extractor.ReadVersionDocument(int, string)"/>, which
+/// is where a `rt_version` call's code becomes a document, because a read that fails never reaches the
+/// comparison. The alternative - a native library built for a different ABI, or one whose `rt_version`
+/// fails - is not something a test can load, and the first-use path throws exactly what these two
+/// methods return or throw.
 /// </remarks>
 public sealed class AbiContractTests
 {
@@ -103,6 +106,37 @@ public sealed class AbiContractTests
                 StringComparison.Ordinal);
             AssertNamesTheFix(mismatch);
         }
+    }
+
+    /// <summary>
+    /// A `rt_version` call that answers with a non-zero code hands out no document, so there is no
+    /// number to compare and the library is reported as one this assembly cannot use rather than as an
+    /// extraction failure.
+    /// </summary>
+    /// <remarks>
+    /// The read's own failure stays reachable through the inner exception, which is what still names
+    /// the code the library answered with; the empty document is the shape a foreign library that
+    /// writes no buffer produces.
+    /// </remarks>
+    [Fact]
+    public void Version_Read_That_Fails_Reports_Neither_Number()
+    {
+        var mismatch = Assert.Throws<ContractVersionMismatchException>(
+            () => Extractor.ReadVersionDocument(2, string.Empty));
+
+        Assert.Equal(1, mismatch.ExpectedAbi);
+        Assert.Null(mismatch.ActualAbi);
+        Assert.Equal(1, mismatch.ExpectedSchemaVersion);
+        Assert.Null(mismatch.ActualSchemaVersion);
+        Assert.Contains(
+            "reports abi (not reported) and schemaVersion (not reported)",
+            mismatch.Message,
+            StringComparison.Ordinal);
+        AssertNamesTheFix(mismatch);
+        Assert.Contains(
+            "code 2",
+            Assert.IsType<TrafilaturaException>(mismatch.InnerException).Message,
+            StringComparison.Ordinal);
     }
 
     /// <summary>

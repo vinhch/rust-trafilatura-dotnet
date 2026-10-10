@@ -96,7 +96,7 @@ internal static partial class Interop
         }
     }
 
-    /// <summary>Returns the version document as UTF-8 JSON, or throws for a code that carries no buffer.</summary>
+    /// <summary>Returns the ABI's return code and the version document as UTF-8 JSON, which reads as an empty string when that code carries no buffer.</summary>
     /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
     internal static (int Code, string Json) Version()

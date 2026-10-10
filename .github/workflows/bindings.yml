@@ -22,6 +22,9 @@ jobs:
           - rid: win-x64
             os: windows-latest
           - rid: linux-x64
+            # ubuntu-22.04 sets the floor: the staged .so can require glibc symbol versions up to that
+            # image's 2.35 and no newer, so it loads on glibc 2.35 or newer and not on musl. The floor
+            # the link imposed is unmeasured; linux-arm64 below cross-builds here and shares it.
             os: ubuntu-22.04
           - rid: linux-arm64
             os: ubuntu-22.04
@@ -100,6 +103,12 @@ jobs:
           path: artifacts/*.nupkg
           if-no-files-found: error
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        # A pull request from a fork gets a read-only token whatever this job's permissions say, so
+        # attesting there would fail a step that no contributor can fix and would turn an unrelated
+        # contribution red. What the attestation covers is the release artifact, so it runs on the
+        # pushes and tags that produce one; the `publish` job publishes the exact bytes this step
+        # attested.
+        if: github.event_name != 'pull_request'
         with:
           subject-path: artifacts/*.nupkg
 

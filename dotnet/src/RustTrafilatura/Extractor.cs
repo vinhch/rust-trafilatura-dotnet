@@ -40,6 +40,11 @@ public static class Extractor
     /// versioned independently of `abi`, so a different crate version is not a mismatch and is not
     /// compared.
     /// </remarks>
+    /// <exception cref="ContractVersionMismatchException">
+    /// The library's `rt_version` answered with a code that carried no document, so there is nothing to
+    /// return. A document that is readable is returned as it stands, because this accessor does not
+    /// compare it.
+    /// </exception>
     public static string AbiVersion => VersionDocument.Value;
 
     /// <summary>
@@ -55,9 +60,10 @@ public static class Extractor
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
     /// <exception cref="ContractVersionMismatchException">
-    /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for. The
-    /// comparison is made once per process, on the first call that reaches here, and every later call
-    /// throws that same failure until a matching library is loaded.
+    /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for, or
+    /// its `rt_version` answered with a code that carried no version document at all. The comparison is
+    /// made once per process, on the first call that reaches here, and every later call throws that
+    /// same failure until a usable library is loaded.
     /// </exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
@@ -574,14 +580,30 @@ public static class Extractor
 
     private static string ReadVersionDocument()
     {
-        var (code, response) = Interop.Version();
-        if (code != 0)
-        {
-            throw ReadFailure(code, response);
-        }
-
-        return response;
+        var (code, document) = Interop.Version();
+        return ReadVersionDocument(code, document);
     }
+
+    /// <summary>
+    /// The version document a `rt_version` call produced, or the mismatch of a library that produced
+    /// none: a non-zero code hands out no document to compare, so there is nothing for
+    /// <see cref="CheckContract(string)"/> to read and the library is one this assembly cannot use.
+    /// </summary>
+    /// <remarks>
+    /// Internal, and taking the call's return code and document as arguments, so a version read that
+    /// fails is assertable without a native library that misbehaves. The failure the read itself
+    /// produced stays on the mismatch as its inner exception, because the code and the response are
+    /// the only record of what the library answered.
+    /// </remarks>
+    internal static string ReadVersionDocument(int code, string document) =>
+        code == 0
+            ? document
+            : throw new ContractVersionMismatchException(
+                RequiredAbi,
+                null,
+                RequiredSchemaVersion,
+                null,
+                ReadFailure(code, document));
 
     /// <summary>
     /// Refuses to extract against a library whose contract version differs from the one this assembly
@@ -594,9 +616,11 @@ public static class Extractor
     /// This is the first use of the native library, so what it finds is what a caller sees first: a
     /// missing or foreign library still reports the <see cref="DllNotFoundException"/> or
     /// <see cref="EntryPointNotFoundException"/> the extraction call used to report, with the same
-    /// diagnostics, because the document is read through the same <see cref="Interop"/> calls. `Lazy`
-    /// caches that first outcome, mismatch or failure, so later calls report it without loading the
-    /// library again, and a mismatch is the same exception instance every time.
+    /// diagnostics, because the document is read through the same <see cref="Interop"/> calls. A
+    /// `rt_version` that answers with a non-zero code reads as a mismatch with neither number
+    /// reported, because it handed out no document to compare. `Lazy` caches that first outcome,
+    /// mismatch or failure, so later calls report it without loading the library again, and a mismatch
+    /// is the same exception instance every time.
     /// </remarks>
     private static void EnsureContract()
     {
@@ -750,16 +774,20 @@ public static class Extractor
 }
 
 /// <summary>
-/// The loaded native library reports an `abi` or a `schemaVersion` this assembly was not compiled for,
-/// so no extraction ran.
+/// The loaded native library is not one this assembly can use: it reports an `abi` or a
+/// `schemaVersion` this assembly was not compiled for, or it handed out no version document to
+/// compare, so no extraction ran.
 /// </summary>
 /// <remarks>
 /// Not a <see cref="TrafilaturaException"/>: that type means the extractor ran and refused the page,
 /// and a caller that handles a rejected page must not handle a library it cannot use with it. An
 /// `Actual` value is null when the library's document did not state that number at all, which is a
-/// different finding from a number that differs, and both sides are reported rather than guessed. The
-/// library's whole document is what <see cref="Extractor.AbiVersion"/> returns, and `crate` is not
-/// compared because it is versioned independently of `abi`.
+/// different finding from a number that differs, and both sides are reported rather than guessed. A
+/// version read that fails outright reports both values as null for the same reason and keeps the
+/// failure it produced in <see cref="Exception.InnerException"/>, so the code and the response the
+/// library answered with are not lost. The library's whole document is what
+/// <see cref="Extractor.AbiVersion"/> returns, and `crate` is not compared because it is versioned
+/// independently of `abi`.
 /// </remarks>
 public sealed class ContractVersionMismatchException : Exception
 {
@@ -774,6 +802,25 @@ public sealed class ContractVersionMismatchException : Exception
         int expectedSchemaVersion,
         int? actualSchemaVersion)
         : base(BuildMessage(expectedAbi, actualAbi, expectedSchemaVersion, actualSchemaVersion))
+    {
+        ExpectedAbi = expectedAbi;
+        ActualAbi = actualAbi;
+        ExpectedSchemaVersion = expectedSchemaVersion;
+        ActualSchemaVersion = actualSchemaVersion;
+    }
+
+    /// <summary>
+    /// The same comparison for a version read that failed outright: there is no document at all, so
+    /// both actual values are absent and the failure that produced them travels as the inner
+    /// exception.
+    /// </summary>
+    internal ContractVersionMismatchException(
+        int expectedAbi,
+        int? actualAbi,
+        int expectedSchemaVersion,
+        int? actualSchemaVersion,
+        Exception innerException)
+        : base(BuildMessage(expectedAbi, actualAbi, expectedSchemaVersion, actualSchemaVersion), innerException)
     {
         ExpectedAbi = expectedAbi;
         ActualAbi = actualAbi;

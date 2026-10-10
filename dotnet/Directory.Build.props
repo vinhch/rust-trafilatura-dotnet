@@ -53,7 +53,7 @@
     <!-- An unstaged RID or a wrong HostRid would otherwise be a silent no-op here and surface much
          later as a runtime DllNotFoundException, so it is reported at build time. A warning, not an
          error: a plain build still succeeds, while -warnaserror promotes it like any other warning.
-         Task 10's test scripts turn staleness into a hard failure for the runs that need the library. -->
+         The test scripts turn staleness into a hard failure for the runs that need the library. -->
     <Warning Condition="!Exists('$(NativeLibraryDirectory)')"
              Text="No native library is staged for $(HostRid) at $(NativeLibraryDirectory), so nothing was copied beside $(MSBuildProjectName) and the tests will fail at runtime. Build it with scripts/build.ps1 (or scripts/build.sh)." />
     <ItemGroup Condition="Exists('$(NativeLibraryDirectory)')">

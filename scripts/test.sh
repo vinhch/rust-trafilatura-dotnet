@@ -74,10 +74,12 @@ cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings |
 echo "$script_name: cargo test --locked"
 cargo test --locked --manifest-path "$manifest" || fail "cargo test failed with exit code $?"
 
-# The test-hooks feature gates four tests, two of them spec section 11 rows (`rust/tests/allocation.rs`
-# and `panic_is_caught`), so without this run they are compiled out and libtest reports "running 0 tests"
-# for the file: a green suite that executed nothing. The staged library stays the default build, because
-# scripts/release.* refuses an artifact that exports the feature's symbols.
+# The test-hooks feature gates four tests, three of them spec section 11 rows
+# (`free_round_trip_restores_allocation_counter`, `allocation_counter_balances_over_many_calls` and
+# `panic_is_caught`; the fourth, `concurrent_extract_and_free_returns_the_counter_to_baseline`, is the
+# folded-gap table row). Without this run they are compiled out, and `rust/tests/allocation.rs`, gated
+# whole, reports "running 0 tests": a green suite that executed nothing. The staged library stays the
+# default build, because scripts/release.* refuses an artifact that exports the feature's symbols.
 echo "$script_name: cargo test --locked --features test-hooks"
 cargo test --locked --manifest-path "$manifest" --features test-hooks ||
   fail "cargo test --features test-hooks failed with exit code $?"

@@ -11,10 +11,11 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>trafilatura;html;extraction;text-extraction;readability;native</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Every public member carries a doc comment, so the package ships IntelliSense for its own
-         surface. CS1591 is suppressed rather than answered: the wire-contract data carriers are
-         documented where their shapes are decided, and restating them one property at a time would
-         put a second copy of the contract in this project. -->
+    <!-- The documentation file ships deliberately without a complete surface: every public member
+         outside the wire-contract data carriers carries its own doc comment, and a carrier's members
+         are documented by the design's request and response tables and by the README's option table,
+         so CS1591 is suppressed rather than answered. Restating them one property at a time would put
+         a second copy of the contract in this project. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <!-- Which RIDs the package carries, one property per RID, set by scripts/release.* to the RIDs
