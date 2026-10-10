@@ -32,6 +32,12 @@ jobs:
           # test.sh runs cargo fmt --check and cargo clippy, and the action installs a minimal
           # profile, which carries neither.
           components: rustfmt, clippy
+      # test.sh runs cargo nextest, which the toolchain action does not carry. The version is pinned the
+      # way the toolchain's is: a report is only comparable with another report when both came from the
+      # same producer, so the pin moves as a deliberate edit.
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-nextest@0.9.148
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.401
@@ -41,10 +47,10 @@ jobs:
       - name: Check the version the sources carry
         shell: bash
         run: scripts/version.sh --check
-      # test.sh runs the Rust suite (fmt check, clippy with -D warnings, cargo test, then a second
-      # cargo test with --features test-hooks, which the default pass compiles out) and the C# suite
-      # in one pass, so the host RID's library has to exist first: its stamp check refuses to run the
-      # suite against a library older than the sources it would be testing.
+      # test.sh runs the Rust suite (fmt check, clippy with -D warnings, cargo nextest, then a second
+      # cargo nextest with --features test-hooks, which the default pass compiles out, and a doc-test
+      # pass) and the C# suite in one pass, so the host RID's library has to exist first: its stamp
+      # check refuses to run the suite against a library older than the sources it would be testing.
       - name: Stage the host RID's native library
         shell: bash
         run: scripts/build.sh

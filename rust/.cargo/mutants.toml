@@ -1,3 +1,9 @@
+# nextest runs the suite for these mutants because scripts/test.* runs it too: a suite verified with one
+# runner and a mutant measured with another would be two different measurements. The fail-fast nextest
+# has by default stays on for this (rust/.config/nextest.toml turns it off only in the two profiles that
+# write a report), so a mutant dies at its first failing test instead of running the rest.
+test_tool = "nextest"
+
 # src/lib.rs is the C ABI glue: the entry points, the out-parameter and cap checks, the pointer views
 # and the buffer ownership. Nothing inside the crate calls an export, so a test binary reaches it only
 # through the same extern "C" door a foreign caller uses -- but mutating it is not worthless: measured

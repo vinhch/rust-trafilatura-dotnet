@@ -73,9 +73,12 @@ if (-not (Test-Path -PathType Leaf $BuildScript)) { Fail "missing script: $Build
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { Fail 'cargo not found on PATH' }
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Fail 'dotnet not found on PATH' }
 # The Rust reports come from nextest's own JUnit reporter. It is the runner that can write one: libtest's
-# machine-readable output is unstable, so `cargo test` has no supported way to produce a report.
-if (-not (Get-Command cargo-nextest -ErrorAction SilentlyContinue)) {
-    Fail "cargo-nextest not found on PATH: install it with 'cargo install cargo-nextest --locked'"
+# machine-readable output is unstable, so `cargo test` has no supported way to produce a report. The check
+# is the command rather than `Get-Command cargo-nextest`, because cargo resolves a subcommand from
+# directories a shell's PATH does not list, and a guard has to test what the script is about to run.
+& cargo nextest --version *> $null
+if ($LASTEXITCODE -ne 0) {
+    Fail "cargo nextest is not available: install it with 'cargo install cargo-nextest --locked'"
 }
 
 # The guard lives in the build script, whose stamp it checks: that keeps one implementation of the

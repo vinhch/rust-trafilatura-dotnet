@@ -61,9 +61,11 @@ report_dir="$repo_root/artifacts/test-results"
 command -v cargo >/dev/null 2>&1 || fail "cargo not found on PATH"
 command -v dotnet >/dev/null 2>&1 || fail "dotnet not found on PATH"
 # The Rust reports come from nextest's own JUnit reporter. It is the runner that can write one: libtest's
-# machine-readable output is unstable, so `cargo test` has no supported way to produce a report.
-command -v cargo-nextest >/dev/null 2>&1 ||
-  fail "cargo-nextest not found on PATH: install it with 'cargo install cargo-nextest --locked'"
+# machine-readable output is unstable, so `cargo test` has no supported way to produce a report. The check
+# is the command rather than `command -v cargo-nextest`, because cargo resolves a subcommand from
+# directories a shell's PATH does not list, and a guard has to test what the script is about to run.
+cargo nextest --version >/dev/null 2>&1 ||
+  fail "cargo nextest is not available: install it with 'cargo install cargo-nextest --locked'"
 
 # The guard lives in the build script, whose stamp it checks: that keeps one implementation of the
 # digest per shell, so the writer and the verifier cannot drift apart. It reports a missing staged

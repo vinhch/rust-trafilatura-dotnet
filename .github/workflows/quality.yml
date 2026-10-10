@@ -72,9 +72,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
-          tool: cargo-mutants
-      # The exclusions these runs apply are the ones rust/.cargo/mutants.toml carries rather than any
-      # passed here, so a plain `cargo mutants` in rust/ reproduces what this job does.
+          # nextest is here because cargo-mutants runs the suite through the test tool
+          # rust/.cargo/mutants.toml names, which is the same runner scripts/test.* uses.
+          tool: |
+            cargo-mutants
+            cargo-nextest@0.9.148
+      # The exclusions and the test tool these runs use are the ones rust/.cargo/mutants.toml carries
+      # rather than any passed here, so a plain `cargo mutants` in rust/ reproduces what this job does.
       - name: Mutate what the pull request changed
         if: github.event_name == 'pull_request'
         working-directory: rust
