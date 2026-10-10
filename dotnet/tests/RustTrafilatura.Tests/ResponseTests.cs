@@ -70,7 +70,7 @@ public sealed class ResponseTests
     [Fact]
     public void Missing_Members_Keep_Their_Empty_Defaults()
     {
-        var result = Extractor.ReadResult(0, """{"metadata":{}}"""u8);
+        var result = Response.Read(0, """{"metadata":{}}"""u8);
 
         Assert.Null(result.ContentText);
         Assert.Null(result.CommentsText);
@@ -103,7 +103,7 @@ public sealed class ResponseTests
     [Fact]
     public void Json_Null_And_Empty_String_Stay_Distinct()
     {
-        var result = Extractor.ReadResult(
+        var result = Response.Read(
             0,
             """{"contentText":null,"commentsText":"","contentHtml":"","metadata":null}"""u8);
 
@@ -122,7 +122,7 @@ public sealed class ResponseTests
     [Fact]
     public void Non_String_Values_Are_Skipped_Whole()
     {
-        var result = Extractor.ReadResult(
+        var result = Response.Read(
             0,
             """{"contentHtml":{"nested":"value"},"contentText":"kept","commentsText":7}"""u8);
 
@@ -138,16 +138,16 @@ public sealed class ResponseTests
     [Fact]
     public void Metadata_Members_Are_Read_Inside_Their_Own_Object()
     {
-        var nested = Extractor.ReadResult(
+        var nested = Response.Read(
             0,
             """{"metadata":{"title":"inside","nested":{"title":"deeper"}},"contentText":"after"}"""u8);
 
         Assert.Equal("inside", nested.Metadata!.Title);
         Assert.Equal("after", nested.ContentText);
 
-        Assert.Null(Extractor.ReadResult(0, """{"metadata":null,"contentText":"after"}"""u8).Metadata);
-        Assert.Null(Extractor.ReadResult(0, """{"metadata":[],"contentText":"after"}"""u8).Metadata);
-        Assert.Equal("after", Extractor.ReadResult(0, """{"metadata":[],"contentText":"after"}"""u8).ContentText);
+        Assert.Null(Response.Read(0, """{"metadata":null,"contentText":"after"}"""u8).Metadata);
+        Assert.Null(Response.Read(0, """{"metadata":[],"contentText":"after"}"""u8).Metadata);
+        Assert.Equal("after", Response.Read(0, """{"metadata":[],"contentText":"after"}"""u8).ContentText);
     }
 
     /// <summary>
@@ -158,14 +158,14 @@ public sealed class ResponseTests
     [Fact]
     public void Categories_And_Tags_Read_As_Arrays_Or_Not_At_All()
     {
-        var populated = Extractor.ReadResult(0, """{"metadata":{"categories":["a","b"],"tags":["c"]}}"""u8).Metadata!;
+        var populated = Response.Read(0, """{"metadata":{"categories":["a","b"],"tags":["c"]}}"""u8).Metadata!;
         Assert.Equal(["a", "b"], populated.Categories);
         Assert.Equal(["c"], populated.Tags);
 
-        var mixed = Extractor.ReadResult(0, """{"metadata":{"categories":["a",null,"b",[1]]}}"""u8).Metadata!;
+        var mixed = Response.Read(0, """{"metadata":{"categories":["a",null,"b",[1]]}}"""u8).Metadata!;
         Assert.Equal(["a", "b"], mixed.Categories);
 
-        var scalar = Extractor.ReadResult(0, """{"metadata":{"categories":"a","tags":7}}"""u8).Metadata!;
+        var scalar = Response.Read(0, """{"metadata":{"categories":"a","tags":7}}"""u8).Metadata!;
         Assert.Same(Array.Empty<string>(), scalar.Categories);
         Assert.Same(Array.Empty<string>(), scalar.Tags);
     }
@@ -179,7 +179,7 @@ public sealed class ResponseTests
     [Fact]
     public void Every_Metadata_Member_Reads_Its_Own_Key()
     {
-        var result = Extractor.ReadResult(
+        var result = Response.Read(
             0,
             """
             {"metadata":{"title":"title-value","author":"author-value","url":"url-value","hostname":"hostname-value","description":"description-value","sitename":"sitename-value","date":"2026-10-08T00:00:00Z","categories":["categories-1","categories-2"],"tags":["tags-1"],"id":"id-value","fingerprint":"fingerprint-value","license":"license-value","language":"language-value","image":"image-value","pageType":"pageType-value"}}
@@ -212,10 +212,10 @@ public sealed class ResponseTests
     [Fact]
     public void Malformed_Envelopes_Are_Rejected()
     {
-        Assert.ThrowsAny<JsonException>(() => Extractor.ReadResult(0, "[1]"u8));
-        Assert.ThrowsAny<JsonException>(() => Extractor.ReadResult(0, """{"contentText":"""u8));
-        Assert.ThrowsAny<JsonException>(() => Extractor.ReadResult(0, """{"contentText":"x"} trailing"""u8));
-        Assert.ThrowsAny<JsonException>(() => Extractor.ReadResult(0, ReadOnlySpan<byte>.Empty));
+        Assert.ThrowsAny<JsonException>(() => Response.Read(0, "[1]"u8));
+        Assert.ThrowsAny<JsonException>(() => Response.Read(0, """{"contentText":"""u8));
+        Assert.ThrowsAny<JsonException>(() => Response.Read(0, """{"contentText":"x"} trailing"""u8));
+        Assert.ThrowsAny<JsonException>(() => Response.Read(0, ReadOnlySpan<byte>.Empty));
     }
 
     /// <summary>
@@ -250,13 +250,13 @@ public sealed class ResponseTests
     private static (byte[] Response, ExtractionResult Result) ReadAsACallerWould(byte[] page, ExtractionOptions? options)
     {
         var capture = new RawResponse.Capture();
-        var code = Interop.Extract(Extractor.BuildHeader(options), page, capture.Read);
+        var code = Interop.Extract(Request.Header(options), page, capture.Read);
         Assert.Equal(0, code);
 
         var result = Extractor.ExtractFromBytes(page, options);
 
         AssertMatchesTheResponse(capture.Bytes, result);
-        AssertMatchesTheResponse(capture.Bytes, Extractor.ReadResult(code, capture.Bytes));
+        AssertMatchesTheResponse(capture.Bytes, Response.Read(code, capture.Bytes));
         return (capture.Bytes, result);
     }
 

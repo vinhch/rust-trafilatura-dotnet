@@ -71,7 +71,7 @@ public sealed class ErrorTests
     [Fact]
     public void EmptyBytes_Is_Not_InvalidRequest()
     {
-        var header = Encoding.UTF8.GetBytes(Extractor.BuildHeaderJson(null).GetRawText());
+        var header = Encoding.UTF8.GetBytes(Request.HeaderJson(null).GetRawText());
 
         var (code, response) = Interop.Extract(header, [], RawResponse.Read);
 
@@ -92,7 +92,7 @@ public sealed class ErrorTests
     [Fact]
     public void Unknown_Kind_Does_Not_Throw_On_Parse()
     {
-        var unknown = Extractor.ReadFailure(
+        var unknown = Failures.Read(
             1,
             """{"error":{"kind":"FutureKind","message":"a kind this client predates","context":{"why":"because"}}}""");
 
@@ -102,13 +102,13 @@ public sealed class ErrorTests
 
         // The other two shapes a failure can take: an envelope without an error object, and text that
         // is not JSON at all. Both still produce an exception rather than a JSON error nobody asked for.
-        Assert.Equal(TrafilaturaErrorKind.Unknown, Extractor.ReadFailure(1, """{"schemaVersion":1}""").Kind);
-        Assert.Equal(TrafilaturaErrorKind.Unknown, Extractor.ReadFailure(1, "not json").Kind);
+        Assert.Equal(TrafilaturaErrorKind.Unknown, Failures.Read(1, """{"schemaVersion":1}""").Kind);
+        Assert.Equal(TrafilaturaErrorKind.Unknown, Failures.Read(1, "not json").Kind);
 
         // The parse failure itself is kept, so a library that answers with something unexpected can
         // still be diagnosed from the exception the caller caught. Parse reports JsonReaderException,
         // whose base is the JsonException the mapping catches.
-        Assert.IsAssignableFrom<JsonException>(Extractor.ReadFailure(1, "not json").InnerException);
+        Assert.IsAssignableFrom<JsonException>(Failures.Read(1, "not json").InnerException);
     }
 
     /// <summary>

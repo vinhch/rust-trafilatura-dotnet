@@ -35,12 +35,12 @@ public sealed class OptionsTests
         Assert.Equal(omitted.Metadata!.Title, explicitDefaults.Metadata!.Title);
 
         // An empty options object is written as `{}` rather than as null or as nothing at all.
-        var defaults = Extractor.BuildHeaderJson(new ExtractionOptions());
+        var defaults = Request.HeaderJson(new ExtractionOptions());
         Assert.Empty(defaults.GetProperty("options").EnumerateObject());
         Assert.False(defaults.TryGetProperty("responseFields", out _));
 
         // And no options at all writes no options key, so the only default is the native side's.
-        var withoutOptions = Extractor.BuildHeaderJson(null);
+        var withoutOptions = Request.HeaderJson(null);
         Assert.False(withoutOptions.TryGetProperty("options", out _));
         Assert.Equal(defaults.GetProperty("schemaVersion").GetInt32(), withoutOptions.GetProperty("schemaVersion").GetInt32());
     }
@@ -183,7 +183,7 @@ public sealed class OptionsTests
     [Fact]
     public void Header_Json_Has_The_Wire_Shape()
     {
-        var header = Extractor.BuildHeaderJson(new ExtractionOptions
+        var header = Request.HeaderJson(new ExtractionOptions
         {
             ResponseFields = ["contentText"],
             Url = "https://example.org/article",
@@ -233,7 +233,7 @@ public sealed class OptionsTests
         const string Expected =
             """{"schemaVersion":1,"url":"https://example.test/page","inputEncoding":"utf-8","responseFields":["contentText"],"options":{"targetLanguage":"en","focus":"favorPrecision","excludeComments":true,"maxTreeSize":4000,"htmlDateMode":"extensive","config":{"minOutputSize":2}}}""";
 
-        var header = Extractor.BuildHeader(new ExtractionOptions
+        var header = Request.Header(new ExtractionOptions
         {
             ResponseFields = ["contentText"],
             Url = "https://example.test/page",
@@ -261,7 +261,7 @@ public sealed class OptionsTests
         const string Expected =
             """{"schemaVersion":1,"options":{"focus":99,"htmlDateMode":42}}""";
 
-        var header = Extractor.BuildHeader(new ExtractionOptions
+        var header = Request.Header(new ExtractionOptions
         {
             Focus = (ExtractionFocus)99,
             HtmlDateMode = (HtmlDateMode)42,
@@ -289,11 +289,11 @@ public sealed class OptionsTests
         Assert.Equal("disabled", DateModeWire(HtmlDateMode.Disabled));
 
         static string FocusWire(ExtractionFocus focus) =>
-            Extractor.BuildHeaderJson(new ExtractionOptions { Focus = focus })
+            Request.HeaderJson(new ExtractionOptions { Focus = focus })
                 .GetProperty("options").GetProperty("focus").GetString()!;
 
         static string DateModeWire(HtmlDateMode mode) =>
-            Extractor.BuildHeaderJson(new ExtractionOptions { HtmlDateMode = mode })
+            Request.HeaderJson(new ExtractionOptions { HtmlDateMode = mode })
                 .GetProperty("options").GetProperty("htmlDateMode").GetString()!;
     }
 
