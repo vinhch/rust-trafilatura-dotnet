@@ -1,0 +1,52 @@
+# Version updates for the three ecosystems this repository depends on. Actions are pinned to a
+# commit SHA in .github/workflows, which is why this file exists: Dependabot is what moves them.
+# Repository settings, not expressible here, hold Dependabot alerts and security updates.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request per ecosystem for the updates that cannot change behaviour on their own;
+      # a major bump still arrives on its own so it is read as the deliberate release act it is.
+      cargo-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+    # `rust-trafilatura` is covered on purpose by the pattern above. Its pin is exact, so merging
+    # that bump also needs the package version change section 9 describes, not a routine merge.
+
+  - package-ecosystem: nuget
+    directory: /dotnet
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+    # Resolved through dotnet/RustTrafilatura.sln, so a project missing from the solution is a
+    # project Dependabot never updates.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch

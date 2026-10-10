@@ -1,0 +1,137 @@
+# Builds every RID and produces the package. Split from ci.yml by cost: five native builds are
+# minutes each, so nothing here runs the suites. Actions are pinned to a commit SHA with their version
+# in a trailing comment; the toolchain pin's comment in ci.yml says why Dependabot cannot move that
+# one.
+name: bindings
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: native (${{ matrix.rid }})
+    strategy:
+      # Every RID is its own artifact and its own platform; one failing leg must not hide the others.
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-22.04
+          - rid: linux-arm64
+            os: ubuntu-22.04
+            cross_target: aarch64-unknown-linux-gnu
+            cross_linker: aarch64-linux-gnu-gcc
+          - rid: osx-x64
+            os: macos-14
+            cross_target: x86_64-apple-darwin
+          - rid: osx-arm64
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      # Only the two legs whose target is not the runner's own architecture need a target installed
+      # or a linker to reach it.
+      - name: Install the cross linker
+        if: matrix.cross_linker
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Add the cross target
+        if: matrix.cross_target
+        run: rustup target add ${{ matrix.cross_target }}
+      # build.sh stages into runtimes/<rid>/native/ and writes the build stamp beside the library, so
+      # the artifact below already has the layout the package job unpacks.
+      - name: Build the library
+        shell: bash
+        run: |
+          # Cargo takes the linker for a target from a per-target environment variable. It is set only
+          # on the leg that needs a cross linker, because an empty value is still a value cargo reads.
+          if [ -n "${{ matrix.cross_linker }}" ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${{ matrix.cross_linker }}"
+          fi
+          scripts/build.sh --rid ${{ matrix.rid }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.rid }}
+          # The RID directory rather than the library file: an artifact holds a directory's contents
+          # at its root, which is what makes `merge-multiple` below rebuild the staging tree exactly.
+          # The stamp travels with it and is never packed: the package project packs the library file
+          # by name, and Package_Contains_AllRidsAndLicenses asserts the package carries no stamp.
+          path: dotnet/src/RustTrafilatura/runtimes/
+          if-no-files-found: error
+
+  package:
+    name: package
+    needs: native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # actions/attest-build-provenance signs the package through this workflow's OIDC identity,
+      # writes the attestation to the repository, and stores the artifact metadata record the
+      # attestation refers to; without the last permission it succeeds and creates no record.
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          # Each artifact carries one runtimes/<rid>/ subtree, so merging them into runtimes/ is what
+          # produces the five-RID staging layout release.sh verifies.
+          merge-multiple: true
+          path: dotnet/src/RustTrafilatura/runtimes/
+      # No flags: the release script refuses to pack unless all five RIDs are staged and the README
+      # and the three license files exist, then runs the package-content tests on what it wrote.
+      - name: Pack and check the package
+        shell: bash
+        run: scripts/release.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: artifacts/*.nupkg
+
+  publish:
+    name: publish
+    # Tag-gated: no non-tag ref reaches this job, and no workflow pushes a version by itself. The
+    # `nuget` environment's required reviewer is a repository setting; naming the environment here is
+    # what routes the run through it.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nupkg
+          path: artifacts
+      # --push-only publishes the bytes the package job built and attested. Packing here would write a
+      # second file that the attestation does not cover, which is the whole point of reusing the
+      # artifact instead of rebuilding it. RELEASE_TAG is the tag this release is for, and the script
+      # refuses a tag that does not name the version it is about to publish, so a tag pushed against
+      # the wrong commit cannot publish a version nobody asked for. Both values are read from the
+      # environment by the script.
+      - name: Publish the package
+        shell: bash
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: scripts/release.sh --push-only

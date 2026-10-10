@@ -10,6 +10,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Turns the trim and AOT analyzers on for every project here, so what the package tells a
+         publishing consumer is checkable rather than asserted: the AOT job in
+         .github/workflows/ci.yml promotes IL2026 and IL3050 to errors, and a reflection-based path
+         added later fails that job instead of failing a consumer's publish. -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <!-- Probe P4: a ProjectReference does not go through NuGet's RID resolution, so nothing puts
@@ -39,7 +44,9 @@
        [LibraryImport("rust_trafilatura_ffi")] resolve. The package project itself is skipped:
        its own output is not a deployment, and consumers get the RID assets through NuGet. The
        TargetFramework check skips the cross-targeting pass, which has no asset directory to copy
-       into; the copy belongs to each asset's own output. -->
+       into; the copy belongs to each asset's own output. The item cannot be called NativeLibrary:
+       that name is a Native AOT item type whose members are handed to the linker, which then reads
+       the build stamp beside the library as an object file and fails with LNK1107. -->
   <Target Name="CopyNativeLibrary"
           AfterTargets="Build"
           Condition="'$(MSBuildProjectName)' != 'RustTrafilatura' and '$(TargetFramework)' != ''">
@@ -50,9 +57,9 @@
     <Warning Condition="!Exists('$(NativeLibraryDirectory)')"
              Text="No native library is staged for $(HostRid) at $(NativeLibraryDirectory), so nothing was copied beside $(MSBuildProjectName) and the tests will fail at runtime. Build it with scripts/build.ps1 (or scripts/build.sh)." />
     <ItemGroup Condition="Exists('$(NativeLibraryDirectory)')">
-      <NativeLibrary Include="$(NativeLibraryDirectory)/*" />
+      <StagedNativeLibrary Include="$(NativeLibraryDirectory)/*" />
     </ItemGroup>
-    <Copy SourceFiles="@(NativeLibrary)"
+    <Copy SourceFiles="@(StagedNativeLibrary)"
           DestinationFolder="$(OutDir)"
           SkipUnchangedFiles="true"
           Condition="Exists('$(NativeLibraryDirectory)')" />

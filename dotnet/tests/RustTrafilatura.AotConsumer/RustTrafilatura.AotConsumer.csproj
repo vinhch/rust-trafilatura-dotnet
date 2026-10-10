@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A published consumer, not a package asset and not part of the test run: it has no test SDK and
+       is deliberately absent from dotnet/RustTrafilatura.sln, so `dotnet build` and `dotnet test` on
+       the solution never build it. The AOT job in .github/workflows/ci.yml publishes it for win-x64
+       and linux-x64, runs it and asserts the non-empty ContentText it prints; that job is the only
+       reason this project exists. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- net10.0 alone: the probe proves that a consumer of the current asset survives Native AOT,
+         which one framework answers. Both assets are analyzed by IsAotCompatible in the shared
+         Directory.Build.props instead, so the two-asset comparison is that analysis, not a second
+         publish. TargetFrameworks is cleared first because the shared props file sets it, and a
+         publish of a project that carries it has to name a framework; a consumer writes
+         `dotnet publish -r <rid>` and this project answers the same command. -->
+    <TargetFrameworks></TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/RustTrafilatura/RustTrafilatura.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Directory.Build.props copies the staged library into the build output because a
+         ProjectReference does not go through NuGet's RID resolution (probe P4). A file a target
+         copies into $(OutDir) is not a publish item, so a published consumer would be a binary whose
+         first extraction fails with DllNotFoundException; this makes the same file part of what
+         `dotnet publish` writes. The build stamp beside the library is build evidence, not something
+         a deployment carries. -->
+    <None Include="$(NativeLibraryDirectory)/*"
+          Exclude="$(NativeLibraryDirectory)/build-stamp.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,44 @@
+# Supply-chain policy for the ffi crate, read by the `supply-chain` job in
+# .github/workflows/ci.yml and by a plain `cargo deny check advisories licenses bans` in rust/.
+#
+# Its reason for existing is the licenses check: without a config, cargo-deny has no allow-list and
+# refuses every crate that has a license at all. The settings below are the decisions this repository
+# makes; everything the template offers and this file omits is left at cargo-deny's own default.
+
+[licenses]
+# Exactly the license expressions this dependency graph reports, as `cargo deny list` prints them, and
+# nothing else. A crate whose license is outside this list fails the job instead of passing unnoticed,
+# which is the point of an allow-list over a blanket permission.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ICU",
+    "MIT",
+    "Python-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# Why these and not others: every one of them is permissive. They require attribution and the notice
+# text at most, never source disclosure or a change to this repository's terms, and the package ships
+# the upstream license files that satisfy those obligations (D9). That is the same posture the core
+# crate takes: the graph is its graph, since the ffi crate adds only serde, serde_json, chrono and
+# mimalloc, whose licenses (MIT, Apache-2.0, Unlicense) are in the list already.
+# `rust-trafilatura-ffi` itself states `Apache-2.0 AND BSD-3-Clause`, so it lands in two families the
+# list carries for the crates it embeds rather than needing an entry of its own. An allowance no crate
+# uses is reported as `warning[license-not-encountered]` and still reports `licenses ok`, so a stale
+# entry costs a line in the log rather than a red job.
+
+[advisories]
+# No settings of its own. An `ignore` entry here would be an accepted risk and each one would need its
+# reason beside it, so the honest state is cargo-deny's own defaults with nothing suppressed.
+
+[bans]
+# Duplicates are reported, not failed: the graph carries several versions of phf, html5ever, tendril,
+# markup5ever, string_cache, syn and windows-sys, all chosen inside the core crate's HTML and ICU
+# stack rather than by this repository, so a red job here would be unactionable.
+multiple-versions = "warn"
+# A `*` requirement in this crate's own manifest is a dependency that floats without a review point.
+wildcards = "deny"
