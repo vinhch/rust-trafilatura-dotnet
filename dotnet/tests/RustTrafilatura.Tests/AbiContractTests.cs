@@ -7,8 +7,8 @@ namespace RustTrafilatura.Tests;
 /// documents pass, which are reported as a mismatch, and what a caller reads off the exception.
 /// </summary>
 /// <remarks>
-/// The document cases drive <see cref="Extractor.CheckContract(string)"/>, which takes the document as
-/// text; the failing-read case drives <see cref="Extractor.ReadVersionDocument(int, string)"/>, which
+/// The document cases drive <see cref="LibraryContract.Check(string)"/>, which takes the document as
+/// text; the failing-read case drives <see cref="LibraryContract.ReadDocument(int, string)"/>, which
 /// is where a `rt_version` call's code becomes a document, because a read that fails never reaches the
 /// comparison. The alternative - a native library built for a different ABI, or one whose `rt_version`
 /// fails - is not something a test can load, and the first-use path throws exactly what these two
@@ -19,14 +19,14 @@ public sealed class AbiContractTests
     /// <summary>The shipped library's own document is the one passing case only a run can produce.</summary>
     [Fact]
     public void RealLibrary_Passes_The_Contract_Check() =>
-        Assert.Null(Extractor.CheckContract(Extractor.LibraryVersion.Document));
+        Assert.Null(LibraryContract.Check(Extractor.LibraryVersion.Document));
 
     /// <summary>The `abi` side alone, with the schema matching, so only that number can be the finding.</summary>
     [Fact]
     public void Abi_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":2,"schemaVersion":1,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":2,"schemaVersion":1,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(2, mismatch.ActualAbi);
@@ -42,7 +42,7 @@ public sealed class AbiContractTests
     public void Schema_Version_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":1,"schemaVersion":2,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":1,"schemaVersion":2,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(1, mismatch.ActualAbi);
@@ -58,7 +58,7 @@ public sealed class AbiContractTests
     public void Both_Values_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            Extractor.CheckContract("""{"abi":2,"schemaVersion":3,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":2,"schemaVersion":3,"crate":"0.0.1"}"""));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Equal(2, mismatch.ActualAbi);
@@ -75,7 +75,7 @@ public sealed class AbiContractTests
     /// </summary>
     [Fact]
     public void Crate_Version_Is_Not_Compared() =>
-        Assert.Null(Extractor.CheckContract("""{"abi":1,"schemaVersion":1,"crate":"9.9.9"}"""));
+        Assert.Null(LibraryContract.Check("""{"abi":1,"schemaVersion":1,"crate":"9.9.9"}"""));
 
     /// <summary>
     /// A document that states no contract version cannot pass: text that is not JSON, a document with
@@ -94,7 +94,7 @@ public sealed class AbiContractTests
 
         foreach (var document in documents)
         {
-            var mismatch = Assert.IsType<ContractVersionMismatchException>(Extractor.CheckContract(document));
+            var mismatch = Assert.IsType<ContractVersionMismatchException>(LibraryContract.Check(document));
 
             Assert.Equal(1, mismatch.ExpectedAbi);
             Assert.Null(mismatch.ActualAbi);
@@ -122,7 +122,7 @@ public sealed class AbiContractTests
     public void Version_Read_That_Fails_Reports_Neither_Number()
     {
         var mismatch = Assert.Throws<ContractVersionMismatchException>(
-            () => Extractor.ReadVersionDocument(2, string.Empty));
+            () => LibraryContract.ReadDocument(2, string.Empty));
 
         Assert.Equal(1, mismatch.ExpectedAbi);
         Assert.Null(mismatch.ActualAbi);

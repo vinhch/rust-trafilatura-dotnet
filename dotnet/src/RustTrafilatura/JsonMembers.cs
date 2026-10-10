@@ -17,4 +17,16 @@ internal static class JsonMembers
         parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>
+    /// An integer member of a JSON object, or null when the parent is not an object, the member is
+    /// absent, its value is not a number, or it does not fit an `int` this client can compare.
+    /// </summary>
+    internal static int? Number(JsonElement document, string name) =>
+        document.ValueKind == JsonValueKind.Object
+            && document.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+                ? number
+                : null;
 }
