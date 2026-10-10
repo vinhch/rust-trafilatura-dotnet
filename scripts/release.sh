@@ -3,7 +3,7 @@
 # Produce artifacts/RustTrafilatura.<version>.nupkg from the staged native libraries.
 #
 # Every RID in the package layout has to be staged before a package that claims to support it is
-# built, and the README and the three license files have to be present, so a package is refused rather
+# built, and the README, the license files and the third-party notices have to be present, so a package is refused rather
 # than published half-complete. Each staged library is also checked for the test-hooks exports, which
 # exist only in a build of the test suite and must not reach a shipped artifact. Packing itself is
 # delegated to the package project; this script decides what is packable and never pushes unless
@@ -12,7 +12,7 @@ set -euo pipefail
 
 readonly script_name="release.sh"
 readonly rids="win-x64 linux-x64 linux-arm64 osx-x64 osx-arm64"
-readonly package_files="README.md LICENSE LICENSE-GO.txt LICENSE-READABILITY-ENCODING"
+readonly package_files="README.md LICENSE THIRD-PARTY-NOTICES.md"
 readonly project="dotnet/src/RustTrafilatura/RustTrafilatura.csproj"
 
 # The two exports the `test-hooks` feature adds to rust/src/lib.rs. The panicking one is the export
@@ -25,7 +25,9 @@ usage() {
 Usage: scripts/$script_name [--allow-partial] [--push | --push-only]
 
 Packs artifacts/RustTrafilatura.<version>.nupkg from the native libraries staged under
-dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README and the three license
+dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README, the license files and the third-party notices at the package root.
+The library files are the package content: the build stamp that sits beside each one is build
+evidence and is never packed.
 files at the package root. The library files are the package content: the build stamp that
 sits beside each one is build evidence and is never packed. A staged library that exports a
 test-hooks symbol is refused, because that feature is built only for the test suite.
@@ -165,7 +167,7 @@ fi
 # The package README and the license files have to be at the repository root, which is where the pack
 # entries in the project read them from.
 for name in $package_files; do
-  [ -f "$repo_root/$name" ] || fail "missing package file: $repo_root/$name. Every package must ship the README and the three license files."
+  [ -f "$repo_root/$name" ] || fail "missing package file: $repo_root/$name. Every package must ship the README, the license files and the third-party notices."
 done
 
 # One property per staged RID plus the marker that tells the project a selection was made. Anything not

@@ -436,3 +436,7 @@ target/
 # cargo-mutants writes its outcome files and per-mutant diffs here on every run, including the
 # plain `cargo mutants` the weekly job runs, and archives the run before it beside this directory.
 /rust/mutants.out*/
+
+# The DSH sandbox ACL diagnostic writes its JSONL reports and DACL backups here. They describe this
+# machine's permissions, not the project.
+/.dsh-acl-reports/

@@ -3,10 +3,10 @@ name = "rust-trafilatura-ffi"
 version = "2.2.8"
 edition = "2021"
 rust-version = "1.98.1"
-# D9's terms for this repository: the crate statically contains the core crate's Apache-2.0,
-# BSD-3-Clause and MIT code, so it states the same expression the NuGet package does rather than a
-# narrower one. `cargo deny` reads this field for the crate itself.
-license = "Apache-2.0 AND BSD-3-Clause"
+# This repository's own source is MIT. The crate links the released core crate, which is
+# dual-licensed `Apache-2.0 OR MIT`, so MIT is the option this field states; the dependency graph's
+# expressions are the allow-list in deny.toml rather than part of this declaration.
+license = "MIT"
 publish = false
 
 [lib]

@@ -1,7 +1,7 @@
 # Produce artifacts/RustTrafilatura.<version>.nupkg from the staged native libraries.
 #
 # Every RID in the package layout has to be staged before a package that claims to support it is
-# built, and the README and the three license files have to be present, so a package is refused rather
+# built, and the README, the license files and the third-party notices have to be present, so a package is refused rather
 # than published half-complete. Each staged library is also checked for the test-hooks exports, which
 # exist only in a build of the test suite and must not reach a shipped artifact. Packing itself is
 # delegated to the package project; this script decides what is packable and never pushes unless
@@ -29,7 +29,7 @@ $Libraries = @{
     'osx-x64'     = @{ File = 'librust_trafilatura_ffi.dylib'; Property = 'RuntimeRid_osx_x64' }
     'osx-arm64'   = @{ File = 'librust_trafilatura_ffi.dylib'; Property = 'RuntimeRid_osx_arm64' }
 }
-$PackageFiles = @('README.md', 'LICENSE', 'LICENSE-GO.txt', 'LICENSE-READABILITY-ENCODING')
+$PackageFiles = @('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')
 $Project = 'dotnet/src/RustTrafilatura/RustTrafilatura.csproj'
 # The two exports the `test-hooks` feature adds to rust/src/lib.rs. The panicking one is the export
 # the specification names as one a release build must not carry, and the counter beside it comes from
@@ -67,7 +67,9 @@ function Show-Usage {
 Usage: scripts/$ScriptName [--allow-partial] [--push | --push-only]
 
 Packs artifacts/RustTrafilatura.<version>.nupkg from the native libraries staged under
-dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README and the three license
+dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README, the license files and the third-party notices at the package root.
+The library files are the package content: the build stamp that sits beside each one is build
+evidence and is never packed.
 files at the package root. The library files are the package content: the build stamp that
 sits beside each one is build evidence and is never packed. A staged library that exports a
 test-hooks symbol is refused, because that feature is built only for the test suite.
@@ -168,7 +170,7 @@ if ($PushOnly) {
 foreach ($name in $PackageFiles) {
     $path = Join-Path $RepoRoot $name
     if (-not (Test-Path -PathType Leaf $path)) {
-        Fail "missing package file: $path. Every package must ship the README and the three license files."
+        Fail "missing package file: $path. Every package must ship the README, the license files and the third-party notices."
     }
 }
 

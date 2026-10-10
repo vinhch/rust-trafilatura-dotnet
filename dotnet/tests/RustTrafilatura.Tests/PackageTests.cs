@@ -1,12 +1,14 @@
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace RustTrafilatura.Tests;
 
 /// <summary>
 /// Checks the packed <c>.nupkg</c> itself: what a consumer installs has to carry the native library
-/// for every RID that was staged, the three license files and the README at its root, and both
-/// library assets, and it must not carry the build stamp that sits beside each staged library.
+/// for every RID that was staged, this repository's licence and notices and the README at its root,
+/// and both library assets, and it must not carry the build stamp that sits beside each staged
+/// library.
 /// </summary>
 /// <remarks>
 /// The category trait keeps this class out of the default run: it is the one test that needs a
@@ -24,7 +26,11 @@ public sealed class PackageTests
 
     private const string PackageRelativePath = "artifacts/RustTrafilatura." + PackageVersion + ".nupkg";
 
-    private static readonly string[] LibraryFiles = ["LICENSE", "LICENSE-GO.txt", "LICENSE-READABILITY-ENCODING"];
+    /// <summary>
+    /// The files the package carries at its root beside the two managed assets: this repository's MIT
+    /// text and its third-party notices.
+    /// </summary>
+    private static readonly string[] PackageNoticeFiles = ["LICENSE", "THIRD-PARTY-NOTICES.md"];
 
     /// <summary>
     /// The library file one RID stages, or null for a directory name that is not a RID this package
@@ -77,9 +83,9 @@ public sealed class PackageTests
             }
 
             Assert.Contains(entries, name => name == "README.md");
-            foreach (var license in LibraryFiles)
+            foreach (var notice in PackageNoticeFiles)
             {
-                Assert.Contains(entries, name => name == license);
+                Assert.Contains(entries, name => name == notice);
             }
 
             // The build stamp beside each staged library is build evidence, not package content: a
@@ -98,6 +104,53 @@ public sealed class PackageTests
                 Assert.Contains(entries, name => name == $"lib/{framework}/RustTrafilatura.dll");
             }
         }
+    }
+
+    /// <summary>
+    /// The package's licence metadata states MIT by expression rather than by a licence file, so a
+    /// consumer's tooling reads an SPDX id instead of free text.
+    /// </summary>
+    /// <remarks>
+    /// The expression is read from the <c>.nuspec</c> inside the archive rather than from the project
+    /// file: the project is the input, and only the packed metadata is what a consumer's tooling
+    /// reads. A project-level assertion would still pass if the entry never reached the package.
+    /// </remarks>
+    [Fact]
+    public void Package_Declares_License_As_Mit_Expression()
+    {
+        var root = RepositoryRoot();
+        var package = Path.Combine(root, PackageRelativePath);
+        Assert.True(
+            File.Exists(package),
+            $"The package to check is not at {package}. Run pwsh -File scripts/release.ps1 (or bash scripts/release.sh), which packs it and then runs this check.");
+
+        string nuspec;
+        using (var archive = ZipFile.OpenRead(package))
+        {
+            var entry = Assert.Single(
+                archive.Entries,
+                candidate => candidate.FullName.EndsWith(".nuspec", StringComparison.Ordinal));
+            using var reader = new StreamReader(entry.Open());
+            nuspec = reader.ReadToEnd();
+        }
+
+        var expression = Regex.Match(
+            nuspec,
+            @"<license\s+type=""expression""\s*>(?<id>[^<]*)</license>",
+            RegexOptions.IgnoreCase);
+        Assert.True(
+            expression.Success,
+            $"The .nuspec declares no licence expression. Apache-2.0 AND BSD-3-Clause was the expression this package used before this repository's own code became MIT; a package that states neither dropped the metadata. The <license> element is: {Regex.Match(nuspec, @"<license[^>]*>[^<]*</license>", RegexOptions.Singleline).Value}");
+
+        Assert.Equal("MIT", expression.Groups["id"].Value.Trim());
+
+        // NuGet writes a <licenseUrl> beside every expression, derived from the SPDX id; that is its
+        // own compatibility element, not a fallback this project chose. What must not appear is a
+        // licence *file* reference, because that would mean the expression is gone and the terms are
+        // back to free text with no SPDX id for a consumer's tooling to read.
+        Assert.DoesNotContain(@"type=""file""", nuspec, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Apache-2.0", nuspec, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("BSD-3-Clause", nuspec, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -5,7 +5,7 @@
     <Version>2.2.8</Version>
     <Authors>vinhch</Authors>
     <Description>In-process HTML text and metadata extraction for .NET, over the published rust-trafilatura crate and a length-delimited C ABI.</Description>
-    <PackageLicenseExpression>Apache-2.0 AND BSD-3-Clause</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/vinhch/rust-trafilatura-dotnet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/vinhch/rust-trafilatura-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -51,13 +51,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The README and the three license files, all at the package root. They live at the repository
+    <!-- The README, the MIT LICENSE and the third-party notices, all at the package root. They live at the repository
          root, three levels above this project, and are named by absolute path because NuGet resolves a
          package entry's Include against the package output directory, not against this project. -->
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../README.md'))" Pack="true" PackagePath="/" />
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE'))" Pack="true" PackagePath="/" />
-    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE-GO.txt'))" Pack="true" PackagePath="/" />
-    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE-READABILITY-ENCODING'))" Pack="true" PackagePath="/" />
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../THIRD-PARTY-NOTICES.md'))" Pack="true" PackagePath="/" />
   </ItemGroup>
 
   <!-- The native libraries, one entry per RID, staged by scripts/build.* under

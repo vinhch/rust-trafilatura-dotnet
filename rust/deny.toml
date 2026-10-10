@@ -22,12 +22,12 @@ allow = [
     "Zlib",
 ]
 # Why these and not others: every one of them is permissive. They require attribution and the notice
-# text at most, never source disclosure or a change to this repository's terms, and the package ships
-# the upstream license files that satisfy those obligations (D9). That is the same posture the core
-# crate takes: the graph is its graph, since the ffi crate adds only serde, serde_json, chrono and
-# mimalloc, whose licenses (MIT, Apache-2.0, Unlicense) are in the list already.
-# `rust-trafilatura-ffi` itself states `Apache-2.0 AND BSD-3-Clause`, so it lands in two families the
-# list carries for the crates it embeds rather than needing an entry of its own. An allowance no crate
+# text at most, never source disclosure or a change to this repository's terms. This repository's own
+# code is MIT and the core crate it links is dual-licensed Apache-2.0 OR MIT, so the crate's `license`
+# field states MIT and the remaining expressions below belong to the dependencies the allow-list
+# admits. That is the same posture the core crate takes: the graph is its graph, since the ffi crate
+# adds only serde, serde_json, chrono and mimalloc, whose licenses (MIT, Apache-2.0, Unlicense) are in
+# the list already. An allowance no crate
 # uses is reported as `warning[license-not-encountered]` and still reports `licenses ok`, so a stale
 # entry costs a line in the log rather than a red job.
 

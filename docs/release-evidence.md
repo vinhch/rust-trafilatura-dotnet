@@ -36,9 +36,9 @@ Verified on this host:
 - Criterion 2: the Rust parity test passes for all 11 inline fixtures against the core crate.
 - Criterion 3: `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` are clean,
   and the core-checkout build leaves that checkout's `git status --porcelain` empty.
-- Criterion 4, `win-x64` half: the packed `.nupkg` carries the staged RID, the three license files
-  and both managed assets, asserted by `Package_Contains_AllRidsAndLicenses` on both assets. The entry
-  listing in section 4 is the `.nupkg` in `artifacts/`, packed from `eaf3625`.
+- Criterion 4, `win-x64` half: the packed `.nupkg` carries the staged RID, the licence and notices
+  files and both managed assets, asserted by `Package_Contains_AllRidsAndLicenses` on both assets. The
+  entry listing in section 4 is the `.nupkg` in `artifacts/`.
 - Criterion 5: both 1,000-call tests pass, one on each side.
 - Criterion 6: the recorded P1 depth is reproduced at this commit and the stack policy matches it.
 - Criterion 7: the freshly packed package installs from a local source into a scratch console app
@@ -184,7 +184,7 @@ the same `--config patch.crates-io...` build and asserts the same empty `git sta
 does not pass `--locked`, because cargo refuses to resolve a patched package under it. Nothing has
 run that job.
 
-## 4. The `.nupkg` contains all five RIDs and all three license files
+## 4. The `.nupkg` contains all five RIDs, the licence and the notices
 
 Command: `pwsh -File scripts/release.ps1 --allow-partial`
 
@@ -200,53 +200,50 @@ Passed!  - Failed:     0, Passed:    1, Skipped:     0, Total:     1, Duration: 
 Passed!  - Failed:     0, Passed:    1, Skipped:     0, Total:     1, Duration: 26 ms - RustTrafilatura.Tests.dll (net10.0)
 ```
 
-What the local package contains, byte for byte — every entry of the 13-entry archive, with its
+What the local package contains, byte for byte — every entry of the 12-entry archive, with its
 uncompressed size and its sha256 prefix:
 
 ```text
     size  sha256[:16]        entry
      482  5A9880A593D931C5   _rels/.rels
+     659  B3E2C57533FD7DBC   [Content_Types].xml
+    1062  EF5EDCDC6D383839   LICENSE
+    1637  FFF344FE706D376A   THIRD-PARTY-NOTICES.md
      786  BCE3076195C9C127   package/services/metadata/core-properties/nuget.psmdcp
-     812  C5DED603246EAE92   [Content_Types].xml
-    1024  C42E4E5FDFE1248F   RustTrafilatura.nuspec
-    1072  D6DC6E3F1D3793E4   LICENSE-READABILITY-ENCODING
-    1453  911F8F5782931320   LICENSE-GO.txt
-   11357  C71D239DF91726FC   LICENSE
-   19117  AC360AF2EC411E4A   README.md
+     972  4C2135B828B0BC5B   RustTrafilatura.nuspec
+   19168  D6FD85C2F719D296   README.md
    56229  88999BAD2ABB84D6   lib/net10.0/RustTrafilatura.xml
    57732  DA8D805BB7FFBC73   lib/net8.0/RustTrafilatura.xml
-   66560  EE06A6744D9CE5D8   lib/net8.0/RustTrafilatura.dll
-   71680  DABCC98815325AE4   lib/net10.0/RustTrafilatura.dll
+   66560  6DEBED9D9721C69A   lib/net8.0/RustTrafilatura.dll
+   71680  9F2C6C3F945D071B   lib/net10.0/RustTrafilatura.dll
 24911360  3CC41915569C4068   runtimes/win-x64/native/rust_trafilatura_ffi.dll
 ```
 
-This listing is one of the corrections made after the recorded run: it is read from the `.nupkg` in
-`artifacts/` (11,836,439 bytes), whose nuspec names `eaf3625` as the commit it was packed from.
-`[Content_Types].xml` is the entry the recorded listing left out — every archive NuGet writes carries
-one — and seven entries differ from that listing's values for the same path: the nuspec, the two XML
-documentation files, the two managed assemblies and the README, which grew after the recorded pack.
-The staged native library and the three license files are the bytes that listing recorded, so the
-recorded archive size and the entry sizes beside it describe a pack that is no longer the one in
-`artifacts/`.
+The settled entries are the ones worth citing: the source-controlled files (`LICENSE`,
+`THIRD-PARTY-NOTICES.md`, `README.md`, the `.nuspec`) and the native library. The two managed
+assembly digests are not stable across rebuilds of the same tree: they moved between two packs of
+this tree while the native library's digest did not. Cite the sizes and the native digest; treat the
+managed digests as a record of one pack rather than as a reproducible identity.
 
-Four of the five RID paths are absent because only `win-x64` is staged here. The three license files
-are the core tag's blobs byte for byte, and the native library in the package is the staged file byte
-for byte:
+`LICENSE` is this repository's MIT text and `THIRD-PARTY-NOTICES.md` is its statement about the crate
+this package binds. Both are this repository's own files, so neither has an upstream tag to compare
+against.
+
+Four of the five RID paths are absent because only `win-x64` is staged here. The native library in the
+package is the staged file byte for byte:
 
 ```text
-LICENSE                      tag=261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64  packaged=same
-LICENSE-GO.txt               tag=2a7cf70da6e498df9c11ab6a5eaa2ddd7af34da4  packaged=same
-LICENSE-READABILITY-ENCODING tag=e4283b766c758134471b02cecce345ba37001578  packaged=same
 staged native library  3CC41915569C40680D05F18D95B48F0FAA14C2A7E384226113E98F4C13D8921B
 packed native library  3CC41915569C40680D05F18D95B48F0FAA14C2A7E384226113E98F4C13D8921B
 ```
 
 The assertion is `Package_Contains_AllRidsAndLicenses` (`dotnet/tests/RustTrafilatura.Tests/PackageTests.cs`).
 It drives its RID list from the staging tree rather than from five literal paths, so it asserts the
-RIDs that were actually staged — one here. The five-RID case is the `bindings.yml` `package` job,
-which downloads all five `native` artifacts into `runtimes/` and runs `scripts/release.sh` with no
-flags; the script refuses to pack at all unless all five RIDs, the README and the three license files
-are present, and that job has not run.
+RIDs that were actually staged — one here. `Package_Declares_License_As_Mit_Expression` in the same
+file reads the packed `.nuspec` and asserts the licence element is an `expression` whose id is `MIT`.
+The five-RID case is the `bindings.yml` `package` job, which downloads all five `native` artifacts
+into `runtimes/` and runs `scripts/release.sh` with no flags; the script refuses to pack at all unless
+all five RIDs, the README, the licence and the notices are present, and that job has not run.
 
 Host and date: this host, 2026-10-10.
 
