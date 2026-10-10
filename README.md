@@ -300,17 +300,22 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 
 ## Development
 
-Prerequisites: the .NET SDK, a Rust toolchain, and a checkout of this repository.
+Prerequisites: the .NET SDK, a Rust toolchain, `cargo-nextest` for `test.sh`, and a checkout of this
+repository.
 
 ```console
 bash scripts/version.sh    # report the version the crate, the lockfile and the package carry
 bash scripts/build.sh      # stage the host RID's native library
-bash scripts/test.sh       # verify the staged library, then run both suites
+bash scripts/test.sh       # verify the staged library, then run both suites and write the reports
 bash scripts/release.sh    # pack artifacts/RustTrafilatura.<version>.nupkg, then check it
 bash scripts/bench.sh      # the round-trip ratio under its budget
 ```
 
 The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags.
+`test.sh` needs `cargo-nextest` because `cargo test` cannot write a report on stable Rust: libtest's
+machine-readable output is unstable, so the JUnit report comes from nextest's own reporter. Every test
+command writes one into `artifacts/test-results/`, which is the gitignored directory the CI workflow's
+report step publishes from.
 `version.sh --check` fails when the crate version in `rust/Cargo.toml`, the entry cargo writes into
 `rust/Cargo.lock` and `<Version>` in the package project disagree; `--check --tag vX.Y.Z` also fails
 when that tag does not name the version the sources carry, and `--set X.Y.Z` writes one version into

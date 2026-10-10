@@ -1,0 +1,20 @@
+# The JUnit reports for the two runs scripts/test.* makes. nextest does not run doctests, which is why
+# a `cargo test --doc` step stays beside these two runs rather than disappearing with `cargo test`.
+#
+# A relative `path` is resolved under `<workspace>/target/nextest/<profile>/`, so reaching the
+# repository's gitignored artifacts tree — where the .NET reports are written too, which is what lets
+# one report step publish both languages — takes four levels up from `rust/target/nextest/<profile>/`.
+# `report-name` is set because the default is the same for every run, and two reports with one name are
+# two reports a reader cannot tell apart.
+[profile.default]
+# Every test runs even after one fails: a report that stops at the first failure describes that failure,
+# not the suite.
+fail-fast = false
+
+[profile.junit-default.junit]
+path = "../../../../artifacts/test-results/rust/junit-default.xml"
+report-name = "rust default"
+
+[profile.junit-test-hooks.junit]
+path = "../../../../artifacts/test-results/rust/junit-test-hooks.xml"
+report-name = "rust test-hooks"
