@@ -55,16 +55,16 @@ Verified on this host:
 Verified by CI only, and nothing has run it yet:
 
 - The `ubuntu-latest` half of the local suite — `ci.yml` job `test`, matrix leg `ubuntu-latest`.
-- The five-RID package — `bindings.yml` job `package`, which needs all five `native` legs.
+- The five-RID package — `release.yml` job `package`, which needs all five `native` legs.
 - The four native builds this host cannot do (`linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`) —
-  `bindings.yml` job `native`.
+  `release.yml` job `native`.
 - The `linux-x64` AOT leg — `ci.yml` job `Aot_Publish_Extracts_A_Page`, matrix leg `linux-x64`.
 
 Not verified by anything:
 
 - Probe P3 (the Linux artifacts' required `GLIBC_*` versions) — it needs the
-  `linux-x64` artifact from `bindings.yml`'s `native` job and `readelf --version-info`.
-- Both workflows' own execution: matrix expansion, `needs`/`if` wiring, the artifact API, the
+  `linux-x64` artifact from `release.yml`'s `native` job and `readelf --version-info`.
+- The workflows' own execution: matrix expansion, `needs`/`if` wiring, the artifact API, the
   provenance attestation, the `nuget` environment's reviewer and Dependabot's behaviour. No workflow
   run is recorded in this checkout and none was read for this page.
 
@@ -185,7 +185,7 @@ one compiled: `cargo` named the checkout as the package source, which is what th
 
 Host and date: this host, 2026-10-10.
 
-The Linux side of this check is `ci.yml`'s `core-untouched` job on `ubuntu-latest`, which runs
+The Linux side of this check is `quality.yml`'s `core-untouched` job on `ubuntu-latest`, which runs
 the same `--config patch.crates-io...` build and asserts the same empty `git status --porcelain`. It
 does not pass `--locked`, because cargo refuses to resolve a patched package under it. Nothing has
 run that job.
@@ -250,7 +250,7 @@ The assertion is `Package_Contains_AllRidsAndLicenses` (`dotnet/tests/RustTrafil
 It drives its RID list from the staging tree rather than from five literal paths, so it asserts the
 RIDs that were actually staged — one here. `Package_Declares_License_As_Mit_Expression` in the same
 file reads the packed `.nuspec` and asserts the licence element is an `expression` whose id is `MIT`.
-The five-RID case is the `bindings.yml` `package` job, which downloads all five `native` artifacts
+The five-RID case is the `release.yml` `package` job, which downloads all five `native` artifacts
 into `runtimes/` and runs `scripts/release.sh` with no flags; the script refuses to pack at all unless
 all five RIDs, the README, the licence and the notices are present, and that job has not run.
 

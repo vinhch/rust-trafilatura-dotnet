@@ -1,60 +1,21 @@
-# Fast feedback on every push and pull request. Every job either calls a scripts/ file that a
-# developer can run, or runs the same tool, so a local run and this workflow execute the same
-# sequence. Actions are pinned to a commit SHA with their version in a trailing
-# comment, and .github/dependabot.yml moves the ones whose repository tags a release. The
-# dtolnay/rust-toolchain pin is the tip of that repository's `1.98.1` branch rather than a commit in
-# its default branch, and that repository carries no version tags, so Dependabot cannot move it: the
-# branch is the version, and changing it is a deliberate edit here.
+# Fast feedback on every push and pull request: the two-platform suite, the supply-chain check and the
+# AOT publish. Every job either calls a scripts/ file that a developer can run, or runs the same tool,
+# so a local run and this workflow execute the same sequence. The rust-only checks and the weekly
+# measurements are in quality.yml, and the package build is in release.yml. Actions are pinned to a
+# commit SHA with their version in a trailing comment, and .github/dependabot.yml moves the ones whose
+# repository tags a release. The dtolnay/rust-toolchain pin is the tip of that repository's `1.98.1`
+# branch rather than a commit in its default branch, and that repository carries no version tags, so
+# Dependabot cannot move it: the branch is the version, and changing it is a deliberate edit here.
 name: verify
 
 on:
   push:
   pull_request:
-  schedule:
-    # The weekly run is the one nobody is watching: it is where the whole-crate mutation pass and the
-    # round-trip ratio show a slow regression that no single pull request caused.
-    - cron: '0 6 * * 1'
 
 permissions:
   contents: read
 
 jobs:
-  # A trigger-level `paths:` filter would gate the whole workflow, and dotnet/ changes need the test
-  # job, so the rust-only jobs ask this one instead. A range that cannot be resolved reports "changed"
-  # rather than "not changed": a skipped check reads exactly like a passing one.
-  changes:
-    name: rust changed?
-    runs-on: ubuntu-latest
-    outputs:
-      rust: ${{ steps.diff.outputs.rust }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The diff needs the pull request base and the pushed range, which a shallow clone does not
-          # carry.
-          fetch-depth: 0
-      - id: diff
-        name: Diff the range this event covers
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            range="origin/${{ github.base_ref }}...HEAD"
-          else
-            range="${{ github.event.before }}..${{ github.sha }}"
-          fi
-          if ! changed="$(git diff --name-only "$range" 2>/dev/null)"; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if grep -q '^rust/' <<<"$changed"; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "rust=false" >> "$GITHUB_OUTPUT"
-          fi
-
   test:
     name: test (${{ matrix.os }})
     strategy:
@@ -85,40 +46,6 @@ jobs:
         shell: bash
         run: scripts/test.sh
 
-  core-untouched:
-    name: core-untouched
-    needs: changes
-    if: github.event_name == 'schedule' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: markusmobius/rust-trafilatura
-          # The commit tag v2.2.8 points at, which is the version the dependency pins. A tag is
-          # mutable and this checkout is the evidence, so the commit is what is named.
-          ref: d4a26ff6352640a36bd83f6e471583e90badb38e
-          path: core
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      # The patch is a command-line argument rather than a manifest change: the crate depends on the
-      # published 2.2.8 by version, and this build is the one that reads the core sources instead. The
-      # path is absolute because a relative one is resolved against the patched package's own
-      # directory, not the checkout. --locked cannot apply: cargo refuses to resolve a patched package
-      # under it ("cannot update the lock file ... because --locked was passed"), even though the
-      # patch leaves the committed lock byte-identical. The assertion below is what verifies this
-      # build instead.
-      - name: Build the ffi crate against the core checkout
-        run: cargo build --manifest-path rust/Cargo.toml --release --config 'patch.crates-io.rust-trafilatura.path="${{ github.workspace }}/core"'
-      - name: Assert the core checkout is unchanged
-        run: |
-          dirty="$(git -C core status --porcelain)"
-          if [ -n "$dirty" ]; then
-            echo "the wrapper build modified the core checkout:" >&2
-            printf '%s\n' "$dirty" >&2
-            exit 1
-          fi
-          echo "the core checkout is unchanged"
-
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest
@@ -136,85 +63,9 @@ jobs:
         working-directory: rust
         run: cargo deny check advisories licenses bans
 
-  mutants:
-    name: mutants
-    needs: changes
-    # Rust-only, so it follows the same `changes` output as `core-untouched` and `bench`: a pull
-    # request that cannot change a mutant must not install a Rust toolchain and run cargo-mutants.
-    # `--relative` in the step below prunes every change outside rust/, so a documentation-only range
-    # yields an empty diff file, and the step's empty-diff guard must keep its one real meaning: a
-    # rust-touching pull request whose range could not be resolved.
-    # A schedule always runs the whole crate, a pull request runs only when rust/ changed, and a push
-    # runs neither: both steps skip there, which would still show a green `mutants` check that measured
-    # nothing.
-    if: github.event_name == 'schedule' || (github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true')
-    # The whole-crate run mutates every function in the crate, so the job is bounded rather than
-    # trusted to finish: the pull request run is minutes, the weekly one is the long half.
-    timeout-minutes: 120
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # --in-diff needs the pull request base to build the diff against.
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
-        with:
-          tool: cargo-mutants
-      # The exclusions these runs apply are the ones rust/.cargo/mutants.toml carries rather than any
-      # passed here, so a plain `cargo mutants` in rust/ reproduces what this job does.
-      - name: Mutate what the pull request changed
-        if: github.event_name == 'pull_request'
-        working-directory: rust
-        run: |
-          diff="$RUNNER_TEMP/mutants-pull-request.diff"
-          # --relative is what makes the paths relative to rust/ rather than to the repository root.
-          # cargo-mutants matches its own paths (`src/lib.rs`) against this diff, so a repo-root path
-          # (`rust/src/lib.rs`) matches nothing, and that is how this step used to select zero mutants
-          # and still exit 0. fetch-depth: 0 above is what makes the merge base available.
-          git diff --relative "origin/${{ github.base_ref }}...HEAD" > "$diff"
-          if [ ! -s "$diff" ]; then
-            echo "origin/${{ github.base_ref }}...HEAD produced an empty diff, so this step has nothing to measure; failing rather than reporting a pass" >&2
-            exit 1
-          fi
-          echo "files the diff covers: $(grep -c '^diff --git ' "$diff")"
-          # The count is printed before the run because a diff that touches no mutated module
-          # legitimately filters to zero mutants: that is a pass, and it has to be visible as zero
-          # rather than read as a run that measured something.
-          cargo mutants --in-diff "$diff" --list > "$RUNNER_TEMP/mutants.txt"
-          echo "mutants selected by the diff: $(wc -l < "$RUNNER_TEMP/mutants.txt")"
-          cargo mutants --in-diff "$diff"
-      # A full re-run of the crate, not a comparison with a recorded baseline: the baseline is the
-      # committed rust/.cargo/mutants.toml plus the run the mutation-testing task records, which this
-      # job reports survivors against in the same way.
-      - name: Mutate the whole crate
-        if: github.event_name == 'schedule'
-        working-directory: rust
-        run: cargo mutants
-
-  bench:
-    name: bench
-    needs: changes
-    if: github.event_name == 'schedule' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
-      # The ratio is asserted, not recorded: shared runners are too noisy for absolute milliseconds,
-      # and the managed probe bench.sh runs afterwards needs the staged library beside its own output.
-      - name: Stage the host RID's native library
-        shell: bash
-        run: scripts/build.sh
-      - name: Measure the round trip
-        shell: bash
-        run: scripts/bench.sh
-
-  # R3's evidence: IsAotCompatible is a promise to a publishing consumer only if something publishes
-  # and runs one. The job is named after the assertion recommendation R3 names, so the check that
-  # carries the claim is the one a reader can find by it.
+  # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
+  # The job is named after the assertion it carries, so the check that carries the claim is the one a
+  # reader can find by it.
   Aot_Publish_Extracts_A_Page:
     name: Aot_Publish_Extracts_A_Page (${{ matrix.rid }})
     strategy:

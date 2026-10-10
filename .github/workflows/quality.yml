@@ -1,0 +1,120 @@
+# The rust-only checks that are not a per-push gate: the whole-crate mutation pass and the round-trip
+# ratio on the weekly run, and the diff-scoped mutation pass plus the same ratio on a pull request that
+# changes rust/. Every job calls a scripts/ file or runs the same tool a developer can run, so a local
+# run and this workflow execute the same sequence. The toolchain pin's comment in ci.yml says why
+# Dependabot cannot move that one.
+name: quality
+
+on:
+  pull_request:
+    # What the filter keeps out is a measurement rather than a gate, which is why it sits on the
+    # trigger. It lists rust/ only: the mutation step fails on an empty diff, and the trigger is what
+    # keeps that guard meaning "the range could not be resolved" instead of "this pull request changed
+    # nothing to measure". There is no push trigger, because the mutation step runs on a pull request
+    # or a schedule only, and a push would show its skipped step as a green check that measured nothing.
+    paths:
+      - 'rust/**'
+  schedule:
+    # The weekly run is the one nobody is watching: it is where the whole-crate mutation pass and the
+    # round-trip ratio show a slow regression that no single pull request caused.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  core-untouched:
+    name: core-untouched
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: markusmobius/rust-trafilatura
+          # The commit tag v2.2.8 points at, which is the version the dependency pins. A tag is
+          # mutable and this checkout is the evidence, so the commit is what is named.
+          ref: d4a26ff6352640a36bd83f6e471583e90badb38e
+          path: core
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      # The patch is a command-line argument rather than a manifest change: the crate depends on the
+      # published 2.2.8 by version, and this build is the one that reads the core sources instead. The
+      # path is absolute because a relative one is resolved against the patched package's own
+      # directory, not the checkout. --locked cannot apply: cargo refuses to resolve a patched package
+      # under it ("cannot update the lock file ... because --locked was passed"), even though the
+      # patch leaves the committed lock byte-identical. The assertion below is what verifies this
+      # build instead.
+      - name: Build the ffi crate against the core checkout
+        run: cargo build --manifest-path rust/Cargo.toml --release --config 'patch.crates-io.rust-trafilatura.path="${{ github.workspace }}/core"'
+      - name: Assert the core checkout is unchanged
+        run: |
+          dirty="$(git -C core status --porcelain)"
+          if [ -n "$dirty" ]; then
+            echo "the wrapper build modified the core checkout:" >&2
+            printf '%s\n' "$dirty" >&2
+            exit 1
+          fi
+          echo "the core checkout is unchanged"
+
+  mutants:
+    name: mutants
+    # The whole-crate run mutates every function in the crate, so the job is bounded rather than
+    # trusted to finish: the pull request run is minutes, the weekly one is the long half.
+    timeout-minutes: 120
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # --in-diff needs the pull request base to build the diff against.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-mutants
+      # The exclusions these runs apply are the ones rust/.cargo/mutants.toml carries rather than any
+      # passed here, so a plain `cargo mutants` in rust/ reproduces what this job does.
+      - name: Mutate what the pull request changed
+        if: github.event_name == 'pull_request'
+        working-directory: rust
+        run: |
+          diff="$RUNNER_TEMP/mutants-pull-request.diff"
+          # --relative is what makes the paths relative to rust/ rather than to the repository root.
+          # cargo-mutants matches its own paths (`src/lib.rs`) against this diff, so a repo-root path
+          # (`rust/src/lib.rs`) matches nothing, and that is how this step used to select zero mutants
+          # and still exit 0. fetch-depth: 0 above is what makes the merge base available.
+          git diff --relative "origin/${{ github.base_ref }}...HEAD" > "$diff"
+          if [ ! -s "$diff" ]; then
+            echo "origin/${{ github.base_ref }}...HEAD produced an empty diff, so this range could not be resolved; failing rather than reporting a pass" >&2
+            exit 1
+          fi
+          echo "files the diff covers: $(grep -c '^diff --git ' "$diff")"
+          # The count is printed before the run because a diff that touches no mutated module
+          # legitimately filters to zero mutants: that is a pass, and it has to be visible as zero
+          # rather than read as a run that measured something.
+          cargo mutants --in-diff "$diff" --list > "$RUNNER_TEMP/mutants.txt"
+          echo "mutants selected by the diff: $(wc -l < "$RUNNER_TEMP/mutants.txt")"
+          cargo mutants --in-diff "$diff"
+      # A full re-run of the crate, not a comparison with a recorded baseline: the baseline is the
+      # committed rust/.cargo/mutants.toml, which is what makes a survivor reported here a change in
+      # the crate rather than a change in the exclusions.
+      - name: Mutate the whole crate
+        if: github.event_name == 'schedule'
+        working-directory: rust
+        run: cargo mutants
+
+  bench:
+    name: bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.401
+      # The ratio is asserted, not recorded: shared runners are too noisy for absolute milliseconds,
+      # and the managed probe bench.sh runs afterwards needs the staged library beside its own output.
+      - name: Stage the host RID's native library
+        shell: bash
+        run: scripts/build.sh
+      - name: Measure the round trip
+        shell: bash
+        run: scripts/bench.sh
