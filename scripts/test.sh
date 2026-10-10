@@ -74,6 +74,14 @@ cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings |
 echo "$script_name: cargo test --locked"
 cargo test --locked --manifest-path "$manifest" || fail "cargo test failed with exit code $?"
 
+# The test-hooks feature gates four tests, two of them spec section 11 rows (`rust/tests/allocation.rs`
+# and `panic_is_caught`), so without this run they are compiled out and libtest reports "running 0 tests"
+# for the file: a green suite that executed nothing. The staged library stays the default build, because
+# scripts/release.* refuses an artifact that exports the feature's symbols.
+echo "$script_name: cargo test --locked --features test-hooks"
+cargo test --locked --manifest-path "$manifest" --features test-hooks ||
+  fail "cargo test --features test-hooks failed with exit code $?"
+
 echo "$script_name: dotnet build -c Release"
 dotnet build "$solution" -c Release || fail "dotnet build failed with exit code $?"
 

@@ -89,6 +89,14 @@ Write-Host "$ScriptName`: cargo test --locked"
 & cargo test --locked --manifest-path $Manifest
 if ($LASTEXITCODE -ne 0) { Fail "cargo test failed with exit code $LASTEXITCODE" }
 
+# The test-hooks feature gates four tests, two of them spec section 11 rows (`rust/tests/allocation.rs`
+# and `panic_is_caught`), so without this run they are compiled out and libtest reports "running 0 tests"
+# for the file: a green suite that executed nothing. The staged library stays the default build, because
+# scripts/release.* refuses an artifact that exports the feature's symbols.
+Write-Host "$ScriptName`: cargo test --locked --features test-hooks"
+& cargo test --locked --manifest-path $Manifest --features test-hooks
+if ($LASTEXITCODE -ne 0) { Fail "cargo test --features test-hooks failed with exit code $LASTEXITCODE" }
+
 Write-Host "$ScriptName`: dotnet build -c Release"
 & dotnet build $Solution -c Release
 if ($LASTEXITCODE -ne 0) { Fail "dotnet build failed with exit code $LASTEXITCODE" }
