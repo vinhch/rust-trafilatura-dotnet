@@ -25,12 +25,10 @@ usage() {
 Usage: scripts/$script_name [--allow-partial] [--push | --push-only]
 
 Packs artifacts/RustTrafilatura.<version>.nupkg from the native libraries staged under
-dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README, the license files and the third-party notices at the package root.
-The library files are the package content: the build stamp that sits beside each one is build
-evidence and is never packed.
-files at the package root. The library files are the package content: the build stamp that
-sits beside each one is build evidence and is never packed. A staged library that exports a
-test-hooks symbol is refused, because that feature is built only for the test suite.
+dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README, the license files and
+the third-party notices at the package root. The library files are the package content: the
+build stamp that sits beside each one is build evidence and is never packed. A staged library
+that exports a test-hooks symbol is refused, because that feature is built only for the test suite.
 
   --allow-partial  Pack the RIDs that are staged and report them, instead of refusing when one
                    of the five is missing. The RIDs that are present must still be complete.
