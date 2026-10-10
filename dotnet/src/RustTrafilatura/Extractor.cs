@@ -17,6 +17,15 @@ public static class Extractor
     /// The version document of the native library, `{"abi":1,"schemaVersion":1,"crate":"2.2.8"}`:
     /// the ABI it implements, the JSON schema it speaks and the crate version it was built from.
     /// </summary>
+    /// <remarks>
+    /// The document is what the library says about itself, and this client does not compare it with
+    /// anything: it reads every response with the schema it was compiled against, so a check here
+    /// could only report a mismatch after the fact. A comparison would catch a library whose `abi` or
+    /// `schemaVersion` differs from the ones this assembly knows, and it would not catch a library that
+    /// reports those numbers while implementing something else, because the document is the library's
+    /// own claim. `crate` is versioned independently of `abi`, so a different crate version is not a
+    /// mismatch.
+    /// </remarks>
     public static string AbiVersion => VersionDocument.Value;
 
     /// <summary>
@@ -37,8 +46,7 @@ public static class Extractor
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
     public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)
     {
-        var (code, response) = Interop.Extract(BuildHeader(options), html.Span);
-        return ReadResult(code, response);
+        return Interop.Extract(BuildHeader(options), html.Span, ReadResult);
     }
 
     /// <summary>
@@ -268,22 +276,93 @@ public static class Extractor
         return document.RootElement.Clone();
     }
 
-    private static ExtractionResult ReadResult(int code, string response)
+    /// <summary>
+    /// Reads one response out of the bytes the native library returned. A non-zero code is a failure,
+    /// whose envelope is small enough to read as text; a zero code is the result, read straight from
+    /// the native buffer so the envelope never becomes a full-size managed string of its own.
+    /// </summary>
+    /// <remarks>
+    /// Internal so the branches no response produces - a root that is not an object, a document that
+    /// is truncated or carries trailing content, a member whose value is not the kind the contract
+    /// names - are assertable without a native library that misbehaves.
+    /// </remarks>
+    internal static ExtractionResult ReadResult(int code, ReadOnlySpan<byte> response)
     {
         if (code != 0)
         {
-            throw ReadFailure(code, response);
+            throw ReadFailure(code, Encoding.UTF8.GetString(response));
         }
 
-        using var document = JsonDocument.Parse(response);
-        var root = document.RootElement;
+        string? contentText = null;
+        string? commentsText = null;
+        string? contentHtml = null;
+        string? commentsHtml = null;
+        Metadata? metadata = null;
+
+        var reader = new Utf8JsonReader(response);
+
+        // Input with no JSON token at all throws here rather than returning false, which is what
+        // `JsonDocument.Parse` did with it too.
+        reader.Read();
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("The native library returned a response that is not a JSON object.");
+        }
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            // No other token can appear at this depth in a document that parses, and skipping one
+            // whole keeps a malformed member from desynchronizing the loop.
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.ValueTextEquals("contentText"u8))
+            {
+                reader.Read();
+                contentText = ReadStringValue(ref reader);
+            }
+            else if (reader.ValueTextEquals("commentsText"u8))
+            {
+                reader.Read();
+                commentsText = ReadStringValue(ref reader);
+            }
+            else if (reader.ValueTextEquals("contentHtml"u8))
+            {
+                reader.Read();
+                contentHtml = ReadStringValue(ref reader);
+            }
+            else if (reader.ValueTextEquals("commentsHtml"u8))
+            {
+                reader.Read();
+                commentsHtml = ReadStringValue(ref reader);
+            }
+            else if (reader.ValueTextEquals("metadata"u8))
+            {
+                reader.Read();
+                metadata = ReadMetadata(ref reader);
+            }
+            else
+            {
+                reader.Read();
+                reader.Skip();
+            }
+        }
+
+        // Reading past the root value is what rejects anything after it, which `JsonDocument.Parse`
+        // rejected as well. Empty and whitespace-only input never reaches this line: the read at the
+        // root threw on it.
+        reader.Read();
+
         return new ExtractionResult
         {
-            ContentText = ReadString(root, "contentText"),
-            CommentsText = ReadString(root, "commentsText"),
-            ContentHtml = ReadString(root, "contentHtml"),
-            CommentsHtml = ReadString(root, "commentsHtml"),
-            Metadata = ReadMetadata(root),
+            ContentText = contentText,
+            CommentsText = commentsText,
+            ContentHtml = contentHtml,
+            CommentsHtml = commentsHtml,
+            Metadata = metadata,
         };
     }
 
@@ -291,30 +370,137 @@ public static class Extractor
     /// Maps the `metadata` object, or null when it was not requested: the wire contract keeps
     /// "not asked for" (null) apart from "nothing found" (empty strings and empty arrays).
     /// </summary>
-    private static Metadata? ReadMetadata(JsonElement root)
+    private static Metadata? ReadMetadata(ref Utf8JsonReader reader)
     {
-        if (!root.TryGetProperty("metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Object)
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
+            reader.Skip();
             return null;
+        }
+
+        var title = string.Empty;
+        var author = string.Empty;
+        var url = string.Empty;
+        var hostname = string.Empty;
+        var description = string.Empty;
+        var sitename = string.Empty;
+        DateTimeOffset? date = null;
+        IReadOnlyList<string> categories = Array.Empty<string>();
+        IReadOnlyList<string> tags = Array.Empty<string>();
+        var id = string.Empty;
+        var fingerprint = string.Empty;
+        var license = string.Empty;
+        var language = string.Empty;
+        var image = string.Empty;
+        var pageType = string.Empty;
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.ValueTextEquals("title"u8))
+            {
+                reader.Read();
+                title = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("author"u8))
+            {
+                reader.Read();
+                author = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("url"u8))
+            {
+                reader.Read();
+                url = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("hostname"u8))
+            {
+                reader.Read();
+                hostname = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("description"u8))
+            {
+                reader.Read();
+                description = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("sitename"u8))
+            {
+                reader.Read();
+                sitename = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("date"u8))
+            {
+                reader.Read();
+                date = ReadDate(ref reader);
+            }
+            else if (reader.ValueTextEquals("categories"u8))
+            {
+                reader.Read();
+                categories = ReadStringArray(ref reader);
+            }
+            else if (reader.ValueTextEquals("tags"u8))
+            {
+                reader.Read();
+                tags = ReadStringArray(ref reader);
+            }
+            else if (reader.ValueTextEquals("id"u8))
+            {
+                reader.Read();
+                id = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("fingerprint"u8))
+            {
+                reader.Read();
+                fingerprint = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("license"u8))
+            {
+                reader.Read();
+                license = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("language"u8))
+            {
+                reader.Read();
+                language = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("image"u8))
+            {
+                reader.Read();
+                image = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else if (reader.ValueTextEquals("pageType"u8))
+            {
+                reader.Read();
+                pageType = ReadStringValue(ref reader) ?? string.Empty;
+            }
+            else
+            {
+                reader.Read();
+                reader.Skip();
+            }
         }
 
         return new Metadata
         {
-            Title = ReadString(metadata, "title") ?? string.Empty,
-            Author = ReadString(metadata, "author") ?? string.Empty,
-            Url = ReadString(metadata, "url") ?? string.Empty,
-            Hostname = ReadString(metadata, "hostname") ?? string.Empty,
-            Description = ReadString(metadata, "description") ?? string.Empty,
-            Sitename = ReadString(metadata, "sitename") ?? string.Empty,
-            Date = ReadDate(metadata),
-            Categories = ReadStringArray(metadata, "categories"),
-            Tags = ReadStringArray(metadata, "tags"),
-            Id = ReadString(metadata, "id") ?? string.Empty,
-            Fingerprint = ReadString(metadata, "fingerprint") ?? string.Empty,
-            License = ReadString(metadata, "license") ?? string.Empty,
-            Language = ReadString(metadata, "language") ?? string.Empty,
-            Image = ReadString(metadata, "image") ?? string.Empty,
-            PageType = ReadString(metadata, "pageType") ?? string.Empty,
+            Title = title,
+            Author = author,
+            Url = url,
+            Hostname = hostname,
+            Description = description,
+            Sitename = sitename,
+            Date = date,
+            Categories = categories,
+            Tags = tags,
+            Id = id,
+            Fingerprint = fingerprint,
+            License = license,
+            Language = language,
+            Image = image,
+            PageType = pageType,
         };
     }
 
@@ -376,31 +562,61 @@ public static class Extractor
             : null;
 
     /// <summary>
+    /// A string member, or null when the value is not a string. A field that was not requested is
+    /// JSON null and a requested field that found nothing is an empty string, so the JSON kind is
+    /// the whole difference between them.
+    /// </summary>
+    /// <remarks>
+    /// A value of another kind is skipped whole rather than left where it is: the reader has to return
+    /// to the level its caller was reading, or a nested member would be seen as one of theirs.
+    /// </remarks>
+    private static string? ReadStringValue(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return reader.GetString();
+        }
+
+        reader.Skip();
+        return null;
+    }
+
+    /// <summary>
     /// Null is "the page carries no date"; any other value is an RFC 3339 timestamp, parsed with
     /// round-trip style so the offset the library reported survives.
     /// </summary>
-    private static DateTimeOffset? ReadDate(JsonElement metadata) =>
-        ReadString(metadata, "date") is { } date
+    private static DateTimeOffset? ReadDate(ref Utf8JsonReader reader) =>
+        ReadStringValue(ref reader) is { } date
             ? DateTimeOffset.Parse(date, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
             : null;
 
-    private static IReadOnlyList<string> ReadStringArray(JsonElement parent, string name)
+    /// <summary>
+    /// The strings an array member holds, or the shared empty array when the member is absent, is not
+    /// an array, or holds no string. Both empty results are the same instance, so "the page has no
+    /// tags" costs no list.
+    /// </summary>
+    private static IReadOnlyList<string> ReadStringArray(ref Utf8JsonReader reader)
     {
-        if (!parent.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+        if (reader.TokenType != JsonTokenType.StartArray)
         {
-            return [];
+            reader.Skip();
+            return Array.Empty<string>();
         }
 
-        var items = new List<string>();
-        foreach (var item in value.EnumerateArray())
+        List<string>? items = null;
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {
-            if (ReadStringFromValue(item) is { } text)
+            if (reader.TokenType == JsonTokenType.String)
             {
-                items.Add(text);
+                // The first string is what allocates; an array that holds none never reaches this.
+                (items ??= []).Add(reader.GetString()!);
+                continue;
             }
+
+            reader.Skip();
         }
 
-        return items;
+        return items is null ? Array.Empty<string>() : items;
     }
 
     /// <summary>The error object's `context` as JSON text; the kinds without a payload leave the key out.</summary>
@@ -408,9 +624,6 @@ public static class Extractor
         error.TryGetProperty("context", out var context) && context.ValueKind != JsonValueKind.Null
             ? context.GetRawText()
             : null;
-
-    private static string? ReadStringFromValue(JsonElement value) =>
-        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     /// <summary>Maps the wire kind onto the enum, and anything this client does not know onto <see cref="TrafilaturaErrorKind.Unknown"/>.</summary>
     private static TrafilaturaErrorKind ReadKind(string? kind) => kind switch

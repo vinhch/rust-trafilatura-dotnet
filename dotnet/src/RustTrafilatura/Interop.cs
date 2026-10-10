@@ -4,6 +4,20 @@ using System.Runtime.InteropServices;
 namespace RustTrafilatura;
 
 /// <summary>
+/// Reads one response out of the native bytes it arrived in.
+/// </summary>
+/// <remarks>
+/// The response is a span over the buffer the ABI handed out, so the reader is only called inside the
+/// region that owns that buffer and must not keep the span. A delegate is what carries a span
+/// parameter between the two target frameworks: a `Func&lt;ReadOnlySpan&lt;byte&gt;, TResult&gt;` does
+/// not compile on the `net8.0` asset, whose `Func&lt;T, TResult&gt;` has no `allows ref struct`
+/// constraint (CS9244), while a delegate declared here compiles on both.
+/// </remarks>
+/// <param name="code">The ABI's return code: 0 ok, 1 extraction error, 2 invalid request, 3 a caught panic.</param>
+/// <param name="response">The ABI's UTF-8 JSON response, valid only for the duration of this call.</param>
+internal delegate TResult ResponseReader<TResult>(int code, ReadOnlySpan<byte> response);
+
+/// <summary>
 /// The native library's C ABI, spelled exactly as `rust/src/lib.rs` exports it.
 /// </summary>
 /// <remarks>
@@ -12,7 +26,7 @@ namespace RustTrafilatura;
 /// with. Responses are length-delimited UTF-8 rather than NUL-terminated, so a response may contain
 /// any byte and the caller's payload never becomes a string. The class is internal, and the test
 /// assembly is its only other reader through `InternalsVisibleTo`: a raw round trip means
-/// <see cref="Extract"/>, and the three imports stay reachable for the ABI's own edge cases.
+/// <see cref="Extract{TResult}"/>, and the three imports stay reachable for the ABI's own edge cases.
 /// </remarks>
 internal static partial class Interop
 {
@@ -25,10 +39,10 @@ internal static partial class Interop
             ? "lib" + LibraryName + ".dylib"
             : "lib" + LibraryName + ".so";
 
-    /// <summary>Extracts from a UTF-8 JSON header and a raw payload, returning the ABI's return code with its UTF-8 JSON response.</summary>
+    /// <summary>Extracts from a UTF-8 JSON header and a raw payload, handing the ABI's return code and its UTF-8 JSON response to a reader.</summary>
     /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
-    internal static (int Code, string Json) Extract(ReadOnlySpan<byte> header, ReadOnlySpan<byte> payload)
+    internal static TResult Extract<TResult>(ReadOnlySpan<byte> header, ReadOnlySpan<byte> payload, ResponseReader<TResult> reader)
     {
         nint outPointer = 0;
         nint outLength = 0;
@@ -70,11 +84,11 @@ internal static partial class Interop
 
         // The call is deliberately outside the ownership try: a P/Invoke that never reached the native
         // side wrote no buffer, and a release attempted from a finally there would replace the real
-        // failure with a second copy of itself. The free covers the read as well, so a response this
-        // marshaller cannot read is still released.
+        // failure with a second copy of itself. The free covers the reader's call, so a response this
+        // reader cannot read, or a reader that throws, is still released.
         try
         {
-            return (code, ReadBuffer(outPointer, outLength));
+            return ReadResponse(outPointer, outLength, code, reader);
         }
         finally
         {
@@ -109,7 +123,7 @@ internal static partial class Interop
 
         try
         {
-            return (code, ReadBuffer(outPointer, outLength));
+            return (code, ReadDocument(outPointer, outLength));
         }
         finally
         {
@@ -204,18 +218,33 @@ internal static partial class Interop
     }
 
     /// <summary>
-    /// Copies the returned buffer into a string; the release stays with the caller's `finally`. A null
-    /// pointer is the ABI's "nothing was written", which the marshaller must not be asked to read.
+    /// Hands the returned buffer to the reader as a span over the native bytes, which is what keeps a
+    /// response from becoming a full-size managed string. A null pointer is the ABI's "nothing was
+    /// written", which the reader must not be asked to read.
     /// </summary>
-    private static string ReadBuffer(nint pointer, nint length)
+    private static unsafe TResult ReadResponse<TResult>(nint pointer, nint length, int code, ResponseReader<TResult> reader)
+    {
+        if (pointer == 0 || length == 0)
+        {
+            return reader(code, default);
+        }
+
+        // Length-delimited, so the byte count is the whole contract; a response above the platform's
+        // int limit cannot be viewed at all, so it throws instead of truncating.
+        return reader(code, new ReadOnlySpan<byte>((void*)pointer, checked((int)length)));
+    }
+
+    /// <summary>
+    /// The version document as a string. It is the public <see cref="Extractor.AbiVersion"/> value
+    /// itself rather than a copy of a larger payload, so materializing it is what the API returns.
+    /// </summary>
+    private static string ReadDocument(nint pointer, nint length)
     {
         if (pointer == 0 || length == 0)
         {
             return string.Empty;
         }
 
-        // Length-delimited, so the byte count is the whole contract; a response above the platform's
-        // int limit cannot be read by this marshaller at all, so it throws instead of truncating.
         return Marshal.PtrToStringUTF8(pointer, checked((int)length)) ?? string.Empty;
     }
 }

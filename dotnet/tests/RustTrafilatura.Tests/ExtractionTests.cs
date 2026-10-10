@@ -27,4 +27,18 @@ public sealed class ExtractionTests
         Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
         Assert.Equal("2.2.8", version.RootElement.GetProperty("crate").GetString());
     }
+
+    /// <summary>
+    /// The document reports the ABI and the schema this client was built for. `AbiVersion` is the
+    /// library's own claim and nothing compares it, so this is the only place the two numbers are
+    /// pinned: a library that moved either one would otherwise be read with the wrong contract.
+    /// </summary>
+    [Fact]
+    public void AbiVersion_Reports_The_Shipped_Abi()
+    {
+        using var version = JsonDocument.Parse(Extractor.AbiVersion);
+
+        Assert.Equal(1, version.RootElement.GetProperty("abi").GetInt32());
+        Assert.Equal(1, version.RootElement.GetProperty("schemaVersion").GetInt32());
+    }
 }

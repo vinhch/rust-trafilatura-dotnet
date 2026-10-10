@@ -70,6 +70,32 @@ internal static class Fixtures
         ArticleHtml.Replace(DateMeta, string.Empty, StringComparison.Ordinal);
 
     /// <summary>
+    /// A page whose extracted text carries a quotation mark and a non-ASCII letter, both written as
+    /// character references so the page's own bytes stay ASCII: a response built from it carries that
+    /// quote escaped and that letter as more than one byte, which are the two encodings a reader that
+    /// only worked on plain text would get wrong.
+    /// </summary>
+    internal static string QuotedHtml { get; } = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <title>The office said no</title>
+        <meta name="author" content="Grace Hopper">
+        <meta property="article:published_time" content="2026-10-08T00:00:00Z">
+        </head>
+        <body>
+        <main><article>
+        <h1>The office said no</h1>
+        <p>The office said &quot;the caf&eacute; stays open&quot; and then closed the file without a second hearing for the tenants who had waited since the spring for one.</p>
+        <p>Nobody in the room asked the question again, and the minutes record only that the matter was noted and that the file would be kept for the usual period before it was archived.</p>
+        <p>Two of the tenants sent a letter afterwards, and the letter is quoted in full in the appendix, quotation marks included, because the department chose not to paraphrase it.</p>
+        </article></main>
+        </body>
+        </html>
+        """;
+
+    /// <summary>
     /// A windows-1252 page, written as its own text: the accented letters are single bytes there
     /// (0xE9, 0xEF and 0xFC) and none of them is valid UTF-8, so a UTF-8 decode would not produce the
     /// text this page carries and the charset detector has to choose a single-byte encoding. Those
@@ -101,6 +127,9 @@ internal static class Fixtures
 
     /// <summary>The windows-1252 page as raw bytes, never as a UTF-8 string.</summary>
     internal static byte[] Windows1252 { get; } = Latin1(Windows1252Html);
+
+    /// <summary>UTF-8 bytes of the page whose text carries a quote and an accented letter.</summary>
+    internal static byte[] Quoted { get; } = Encoding.UTF8.GetBytes(QuotedHtml);
 
     /// <summary>A gzip stream carrying <see cref="Article"/>.</summary>
     internal static byte[] Gzip { get; } = GzipBytes(Article);

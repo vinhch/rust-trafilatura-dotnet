@@ -53,7 +53,7 @@ public sealed class ErrorTests
     [Fact]
     public void MalformedJson_Throws_InvalidRequest()
     {
-        var (code, response) = Interop.Extract("{"u8, Fixtures.Article);
+        var (code, response) = Interop.Extract("{"u8, Fixtures.Article, RawResponse.Read);
 
         Assert.Equal(2, code);
         using var document = JsonDocument.Parse(response);
@@ -73,7 +73,7 @@ public sealed class ErrorTests
     {
         var header = Encoding.UTF8.GetBytes(Extractor.BuildHeaderJson(null).GetRawText());
 
-        var (code, response) = Interop.Extract(header, []);
+        var (code, response) = Interop.Extract(header, [], RawResponse.Read);
 
         Assert.Equal(1, code);
         using var document = JsonDocument.Parse(response);

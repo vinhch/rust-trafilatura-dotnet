@@ -53,6 +53,20 @@ public sealed class OptionsTests
         Assert.Null(result.Metadata!.Date);
     }
 
+    /// <summary>
+    /// The response carries `categories` and `tags` as arrays whether or not the page has any, so the
+    /// empty case is the member's value and not an absence. It has to be the shared empty array: a
+    /// list built for it would be one allocation per call for a member the caller reads as empty.
+    /// </summary>
+    [Fact]
+    public void Empty_Categories_And_Tags_Are_The_Shared_Empty_Array()
+    {
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] });
+
+        Assert.Same(Array.Empty<string>(), result.Metadata!.Categories);
+        Assert.Same(Array.Empty<string>(), result.Metadata.Tags);
+    }
+
     [Fact]
     public void Requesting_Html_Returns_It()
     {
@@ -294,7 +308,8 @@ public sealed class OptionsTests
     {
         var (code, response) = Interop.Extract(
             Encoding.UTF8.GetBytes("""{"schemaVersion":1,"options":{"url":"https://example.org/article"}}"""),
-            Fixtures.Article);
+            Fixtures.Article,
+            RawResponse.Read);
 
         Assert.Equal(2, code);
         using var document = JsonDocument.Parse(response);
