@@ -133,13 +133,13 @@ public sealed class BatchTests
     {
         var failure = new DllNotFoundException("test");
 
-        Assert.Same(failure, Extractor.NormalizeBatchFailure(new AggregateException(failure)));
+        Assert.Same(failure, ExtractionBatch.NormalizeFailure(new AggregateException(failure)));
 
         var two = new AggregateException(new DllNotFoundException("test"), new DllNotFoundException("test"));
-        Assert.Same(two, Extractor.NormalizeBatchFailure(two));
+        Assert.Same(two, ExtractionBatch.NormalizeFailure(two));
 
         var none = new AggregateException();
-        Assert.Same(none, Extractor.NormalizeBatchFailure(none));
+        Assert.Same(none, ExtractionBatch.NormalizeFailure(none));
     }
 
     /// <summary>
