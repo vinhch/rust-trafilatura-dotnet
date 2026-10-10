@@ -63,8 +63,8 @@ public static class UnmanagedMemory
         /// <summary>
         /// The caller's own address, which a fixed buffer does not need pinned or moved. The index is
         /// checked because this method's contract reaches farther than <see cref="Memory{T}"/> does:
-        /// <see cref="MemoryMarshal.TryGetMemoryManager{T, TMemoryManager}"/> hands this instance out
-        /// typed as the public base class, and an unchecked index would then compute an address
+        /// <see cref="MemoryManager{T}"/>'s own method group hands this instance out typed as the
+        /// public base class, and an unchecked index would then compute an address
         /// outside the caller's buffer instead of failing. The end of the buffer is a legal position,
         /// because pinning an empty memory sliced at the end arrives here as the length itself.
         /// </summary>

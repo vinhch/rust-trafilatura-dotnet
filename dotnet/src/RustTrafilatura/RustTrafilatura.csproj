@@ -11,12 +11,83 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>trafilatura;html;extraction;text-extraction;readability;native</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Every public member carries a doc comment, so the package ships IntelliSense for its own
+         surface. CS1591 is suppressed rather than answered: the wire-contract data carriers are
+         documented where their shapes are decided, and restating them one property at a time would
+         put a second copy of the contract in this project. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Which RIDs the package carries, one property per RID, set by scripts/release.* to the RIDs
+         that are staged. RuntimeRidsSelected marks that the script made that choice, so a pack run
+         with no selection is the whole package rather than an empty one. The pair exists because a
+         RID list cannot cross the command line as one semicolon-separated value: MSBuild reads a
+         command-line property as one value and rejects the separators. -->
+    <RuntimeRidsSelected Condition="'$(RuntimeRidsSelected)' == ''">false</RuntimeRidsSelected>
+    <!-- Resolved once here so the Exists() conditions below can take a path without nesting a
+         property call inside a quoted argument, which MSBuild's condition parser rejects. -->
+    <RuntimeRoot>$([System.String]::Copy('$(MSBuildThisFileDirectory)runtimes').Replace('\','/'))</RuntimeRoot>
+    <RuntimeRid_win_x64 Condition="'$(RuntimeRid_win_x64)' == ''">false</RuntimeRid_win_x64>
+    <RuntimeRid_linux_x64 Condition="'$(RuntimeRid_linux_x64)' == ''">false</RuntimeRid_linux_x64>
+    <RuntimeRid_linux_arm64 Condition="'$(RuntimeRid_linux_arm64)' == ''">false</RuntimeRid_linux_arm64>
+    <RuntimeRid_osx_x64 Condition="'$(RuntimeRid_osx_x64)' == ''">false</RuntimeRid_osx_x64>
+    <RuntimeRid_osx_arm64 Condition="'$(RuntimeRid_osx_arm64)' == ''">false</RuntimeRid_osx_arm64>
+    <PackRuntimeRid_win_x64>$(RuntimeRid_win_x64)</PackRuntimeRid_win_x64>
+    <PackRuntimeRid_win_x64 Condition="'$(PackRuntimeRid_win_x64)' == 'false' and '$(RuntimeRidsSelected)' == 'false'">true</PackRuntimeRid_win_x64>
+    <PackRuntimeRid_linux_x64>$(RuntimeRid_linux_x64)</PackRuntimeRid_linux_x64>
+    <PackRuntimeRid_linux_x64 Condition="'$(PackRuntimeRid_linux_x64)' == 'false' and '$(RuntimeRidsSelected)' == 'false'">true</PackRuntimeRid_linux_x64>
+    <PackRuntimeRid_linux_arm64>$(RuntimeRid_linux_arm64)</PackRuntimeRid_linux_arm64>
+    <PackRuntimeRid_linux_arm64 Condition="'$(PackRuntimeRid_linux_arm64)' == 'false' and '$(RuntimeRidsSelected)' == 'false'">true</PackRuntimeRid_linux_arm64>
+    <PackRuntimeRid_osx_x64>$(RuntimeRid_osx_x64)</PackRuntimeRid_osx_x64>
+    <PackRuntimeRid_osx_x64 Condition="'$(PackRuntimeRid_osx_x64)' == 'false' and '$(RuntimeRidsSelected)' == 'false'">true</PackRuntimeRid_osx_x64>
+    <PackRuntimeRid_osx_arm64>$(RuntimeRid_osx_arm64)</PackRuntimeRid_osx_arm64>
+    <PackRuntimeRid_osx_arm64 Condition="'$(PackRuntimeRid_osx_arm64)' == 'false' and '$(RuntimeRidsSelected)' == 'false'">true</PackRuntimeRid_osx_arm64>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The interop layer stays internal: the ABI is an implementation detail, and only the test
          assembly reaches it, for the request shapes the public API cannot produce. -->
     <InternalsVisibleTo Include="RustTrafilatura.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The README and the three license files, all at the package root. They live at the repository
+         root, three levels above this project, and are named by absolute path because NuGet resolves a
+         package entry's Include against the package output directory, not against this project. -->
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../README.md'))" Pack="true" PackagePath="/" />
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE'))" Pack="true" PackagePath="/" />
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE-GO.txt'))" Pack="true" PackagePath="/" />
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE-READABILITY-ENCODING'))" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!-- The native libraries, one entry per RID, staged by scripts/build.* under
+       runtimes/<rid>/native/. Each entry states the package path the file keeps, because a library
+       file is already an assembly by name and NuGet would otherwise place it under lib/ or
+       contentFiles/: the path keeps it under runtimes/, which is where a consumer's RID resolution
+       looks for it. An entry is skipped when its RID was not staged, so the package states what it
+       carries instead of failing on a directory no build produced. The build-stamp.txt that
+       scripts/build.* writes beside each library is never named here: it is build evidence, not
+       package content, so no pack of this project can carry one. -->
+  <ItemGroup>
+    <None Include="runtimes/win-x64/native/rust_trafilatura_ffi.dll"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/rust_trafilatura_ffi.dll"
+          Condition="'$(PackRuntimeRid_win_x64)' == 'true' and Exists('$(RuntimeRoot)/win-x64/native')" />
+    <None Include="runtimes/linux-x64/native/librust_trafilatura_ffi.so"
+          Pack="true"
+          PackagePath="runtimes/linux-x64/native/librust_trafilatura_ffi.so"
+          Condition="'$(PackRuntimeRid_linux_x64)' == 'true' and Exists('$(RuntimeRoot)/linux-x64/native')" />
+    <None Include="runtimes/linux-arm64/native/librust_trafilatura_ffi.so"
+          Pack="true"
+          PackagePath="runtimes/linux-arm64/native/librust_trafilatura_ffi.so"
+          Condition="'$(PackRuntimeRid_linux_arm64)' == 'true' and Exists('$(RuntimeRoot)/linux-arm64/native')" />
+    <None Include="runtimes/osx-x64/native/librust_trafilatura_ffi.dylib"
+          Pack="true"
+          PackagePath="runtimes/osx-x64/native/librust_trafilatura_ffi.dylib"
+          Condition="'$(PackRuntimeRid_osx_x64)' == 'true' and Exists('$(RuntimeRoot)/osx-x64/native')" />
+    <None Include="runtimes/osx-arm64/native/librust_trafilatura_ffi.dylib"
+          Pack="true"
+          PackagePath="runtimes/osx-arm64/native/librust_trafilatura_ffi.dylib"
+          Condition="'$(PackRuntimeRid_osx_arm64)' == 'true' and Exists('$(RuntimeRoot)/osx-arm64/native')" />
   </ItemGroup>
 
   <!-- No System.Text.Json reference: both target frameworks carry that assembly in box, and NuGet

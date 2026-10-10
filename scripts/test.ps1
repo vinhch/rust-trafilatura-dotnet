@@ -28,6 +28,10 @@ and cargo test --locked in rust/, then dotnet build -c Release and dotnet test -
 The staged native library is verified against its build stamp first, so a stale or placeholder
 artifact fails the run instead of passing against nothing.
 
+Tests in the Package category are excluded: they read the packed .nupkg, which only
+scripts/release.ps1 produces, and this run has to pass on a checkout that has built the library and
+never packed. scripts/release.ps1 runs them after packing, where a missing entry fails the release.
+
   -h, --help   Show this message.
 "@ | Write-Host
 }
@@ -89,8 +93,8 @@ Write-Host "$ScriptName`: dotnet build -c Release"
 & dotnet build $Solution -c Release
 if ($LASTEXITCODE -ne 0) { Fail "dotnet build failed with exit code $LASTEXITCODE" }
 
-Write-Host "$ScriptName`: dotnet test -c Release"
-& dotnet test $Solution -c Release
+Write-Host "$ScriptName`: dotnet test -c Release (Package category excluded)"
+& dotnet test $Solution -c Release --filter "Category!=Package"
 if ($LASTEXITCODE -ne 0) { Fail "dotnet test failed with exit code $LASTEXITCODE" }
 
 Write-Host "$ScriptName`: Rust and C# suites passed"

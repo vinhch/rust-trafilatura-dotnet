@@ -9,7 +9,7 @@ namespace RustTrafilatura;
 /// <remarks>
 /// `net9.0` and later spell the two enums from `[JsonStringEnumMemberName]`, which removes this pair
 /// there. On `net8.0` the hand-written converters are the shape the AOT probe compiled with zero
-/// `IL2026`/`IL3050`. `JsonStringEnumConverter<TEnum>` is analyzer-clean there as well, but the
+/// `IL2026`/`IL3050`. `JsonStringEnumConverter&lt;TEnum&gt;` is analyzer-clean there as well, but the
 /// `Converters` array below can only name a type, and its parameterless construction writes
 /// `FavorPrecision` where the wire contract wants `favorPrecision`.
 /// Each `Read` accepts the two forms its `Write` produces and throws `JsonException` on anything else.
