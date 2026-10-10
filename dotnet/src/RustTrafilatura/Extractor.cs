@@ -15,6 +15,7 @@ public static class Extractor
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private static readonly Lazy<string> VersionDocument = new(ReadVersionDocument);
@@ -32,6 +33,9 @@ public static class Extractor
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
+    /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
     public static ExtractionResult ExtractFromBytes(byte[] html, ExtractionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -48,6 +52,9 @@ public static class Extractor
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
+    /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
     public static ExtractionResult ExtractFromHtml(string html, ExtractionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -56,14 +63,96 @@ public static class Extractor
     }
 
     /// <summary>
-    /// Assembles the request header. `responseFields` belongs at its top level while every core
-    /// option belongs inside `options`, and a member that was not set is left out so the native side
-    /// applies its own default instead of a value this layer invented.
+    /// Extracts from many pages with bounded parallelism, returning one item per input in input order.
+    /// A page that fails becomes its own item's <see cref="ExtractionBatchItem.Error"/> instead of
+    /// aborting the batch, so one bad page cannot discard the good ones around it. Every call is an
+    /// independent one-shot extraction, so the batch is worth its cost only across pages: a single
+    /// page gains nothing from it.
+    /// </summary>
+    /// <param name="pages">The pages to extract, one per item in the returned list.</param>
+    /// <param name="options">The options for every page in the batch.</param>
+    /// <param name="maxDegreeOfParallelism">
+    /// How many extractions may run at once; 0 means <see cref="Environment.ProcessorCount"/>.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="pages"/> is null or empty, or one of its elements is null.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDegreeOfParallelism"/> is negative.</exception>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
+    public static IReadOnlyList<ExtractionBatchItem> ExtractMany(
+        IReadOnlyList<byte[]> pages,
+        ExtractionOptions? options = null,
+        int maxDegreeOfParallelism = 0)
+    {
+        if (pages is null)
+        {
+            throw new ArgumentException("The pages to extract must not be null.", nameof(pages));
+        }
+
+        if (pages.Count == 0)
+        {
+            throw new ArgumentException("The pages to extract must not be empty.", nameof(pages));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(maxDegreeOfParallelism);
+
+        for (var index = 0; index < pages.Count; index++)
+        {
+            if (pages[index] is null)
+            {
+                throw new ArgumentException($"The page at index {index} is null.", nameof(pages));
+            }
+        }
+
+        // Written by index rather than appended: a concurrent collection would make the input order
+        // depend on which page finished first, and order is part of this helper's contract.
+        var items = new ExtractionBatchItem[pages.Count];
+        Parallel.For(
+            0,
+            pages.Count,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = maxDegreeOfParallelism == 0
+                    ? Environment.ProcessorCount
+                    : maxDegreeOfParallelism,
+            },
+            index =>
+            {
+                try
+                {
+                    items[index] = new ExtractionBatchItem { Result = ExtractFromBytes(pages[index], options) };
+                }
+                catch (TrafilaturaException exception)
+                {
+                    items[index] = new ExtractionBatchItem { Error = exception };
+                }
+            });
+
+        return items;
+    }
+
+    /// <summary>
+    /// Assembles the request header. `responseFields`, `url` and `inputEncoding` belong at its top
+    /// level while every core option belongs inside `options`, and a member that was not set is left
+    /// out so the native side applies its own default instead of a value this layer invented.
     /// </summary>
     private static byte[] BuildHeader(ExtractionOptions? options) =>
         JsonSerializer.SerializeToUtf8Bytes(
-            new RequestHeader { ResponseFields = options?.ResponseFields, Options = options },
+            new RequestHeader
+            {
+                ResponseFields = options?.ResponseFields,
+                Url = options?.Url,
+                InputEncoding = options?.InputEncoding,
+                Options = options,
+            },
             HeaderJsonOptions);
+
+    /// <summary>
+    /// The request header as JSON text, for a caller that needs to see the wire shape itself.
+    /// </summary>
+    internal static JsonElement BuildHeaderJson(ExtractionOptions? options) =>
+        JsonDocument.Parse(BuildHeader(options)).RootElement;
 
     private static ExtractionResult ReadResult(int code, string response)
     {
@@ -227,12 +316,16 @@ public static class Extractor
     };
 
     /// <summary>
-    /// The wire header. <see cref="HeaderJson"/> gives it camelCase names and drops unset members, so
-    /// an option the caller left alone cannot shadow the native library's default.
+    /// The wire header. <see cref="HeaderJsonOptions"/> gives it camelCase names and drops unset
+    /// members, so an option the caller left alone cannot shadow the native library's default.
     /// </summary>
     private sealed class RequestHeader
     {
         public int SchemaVersion { get; init; } = 1;
+
+        public string? Url { get; init; }
+
+        public string? InputEncoding { get; init; }
 
         public List<string>? ResponseFields { get; init; }
 
