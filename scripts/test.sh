@@ -15,8 +15,6 @@ Runs every command CI runs: cargo fmt --check, cargo clippy --locked --all-targe
 cargo nextest run --locked and a second cargo nextest run --locked --features test-hooks in rust/,
 a cargo test --locked --doc for the doc tests nextest does not run, then dotnet build -c Release and
 one dotnet test -c Release per target framework in dotnet/.
-Every test command writes a JUnit report under artifacts/test-results/, which is what the report step
-of the CI workflow publishes; the directory is gitignored and holding the reports is its only purpose.
 The staged native library is verified against its build stamp first, so a stale or placeholder
 artifact fails the run instead of passing against nothing.
 
@@ -24,6 +22,9 @@ Tests in the Package category are excluded: they read the packed .nupkg, which o
 scripts/release.sh produces, and this run has to pass on a checkout that has built the library and
 never packed. scripts/release.sh runs them after packing, where a missing entry fails the release.
 
+  --report     Write the JUnit reports the CI workflow publishes, under artifacts/test-results/: one
+               per Rust run and one per target framework. Nothing is written without it, and the
+               directory is cleared first, so a report cannot outlive the run it describes.
   -h, --help   Show this message.
 EOF
 }
@@ -33,16 +34,21 @@ fail() {
   exit 1
 }
 
+report=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -h | --help)
       usage
       exit 0
       ;;
+    --report)
+      report=true
+      ;;
     *)
       fail "unknown argument: $1"
       ;;
   esac
+  shift
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -67,6 +73,21 @@ command -v dotnet >/dev/null 2>&1 || fail "dotnet not found on PATH"
 cargo nextest --version >/dev/null 2>&1 ||
   fail "cargo nextest is not available: install it with 'cargo install cargo-nextest --locked'"
 
+# The mode decides two things and nothing else: which nextest profile runs, and whether the .NET runs
+# are asked for a report. Every profile below runs the whole suite — fail-fast is off in all of them
+# except nextest's `default`, which cargo-mutants uses — so the only difference a caller sees is
+# whether files are written. The reports of an earlier run are removed first, because a report step
+# cannot tell one run's file from another's, and publishing yesterday's file as today's is the one
+# failure a report must not have.
+if [ "$report" = true ]; then
+  rm -rf "$report_dir"
+  profile="junit-default"
+  hooks_profile="junit-test-hooks"
+else
+  profile="plain"
+  hooks_profile="plain"
+fi
+
 # The guard lives in the build script, whose stamp it checks: that keeps one implementation of the
 # digest per shell, so the writer and the verifier cannot drift apart. It reports a missing staged
 # directory, a missing stamp or a stale artifact, and its exit code is this script's.
@@ -83,7 +104,7 @@ cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings |
   fail "cargo clippy failed with exit code $?"
 
 echo "$script_name: cargo nextest run --locked"
-cargo nextest run --locked --manifest-path "$manifest" --profile junit-default ||
+cargo nextest run --locked --manifest-path "$manifest" --profile "$profile" ||
   fail "cargo nextest failed with exit code $?"
 
 # The test-hooks feature gates four tests, three of them allocation-counter tests
@@ -94,7 +115,7 @@ cargo nextest run --locked --manifest-path "$manifest" --profile junit-default |
 # nothing. The staged library stays the default build, because scripts/release.* refuses an artifact
 # that exports the feature's symbols.
 echo "$script_name: cargo nextest run --locked --features test-hooks"
-cargo nextest run --locked --manifest-path "$manifest" --features test-hooks --profile junit-test-hooks ||
+cargo nextest run --locked --manifest-path "$manifest" --features test-hooks --profile "$hooks_profile" ||
   fail "cargo nextest --features test-hooks failed with exit code $?"
 
 # nextest runs every test binary and no doc test, so the doc tests keep a step of their own: dropping
@@ -109,17 +130,20 @@ dotnet build "$solution" -c Release || fail "dotnet build failed with exit code 
 # The filter is xunit v3's own trait flag: the test project runs on Microsoft.Testing.Platform, opted
 # in by global.json, and that platform does not accept the VSTest --filter expression syntax.
 #
-# One invocation per target framework: the report's file name is fixed, and a single invocation over
-# both assets would have the second framework overwrite the first one's report. The framework list is
-# read from the props that declare it rather than repeated here, so the two cannot disagree, and each
-# name carries the framework so a reader can tell the two reports apart.
+# One invocation per target framework, in both modes: the report's file name is fixed, and a single
+# invocation over both assets could only carry one name for the two of them. The framework list is read
+# from the props that declare it rather than repeated here, so the two cannot disagree.
 frameworks="$(sed -n 's/.*<TargetFrameworks>\([^<]*\)<\/TargetFrameworks>.*/\1/p' "$dotnet_dir/Directory.Build.props" | tr ';' ' ')"
 [ -n "$frameworks" ] || fail "no TargetFrameworks in $dotnet_dir/Directory.Build.props"
 for framework in $frameworks; do
+  report_args=()
+  if [ "$report" = true ]; then
+    report_args=(--report-xunit-junit --report-xunit-junit-filename "dotnet-$framework.junit.xml" --results-directory "$report_dir/dotnet")
+  fi
+
   echo "$script_name: dotnet test -c Release -f $framework (Package category excluded)"
   dotnet test --solution "$solution" -c Release -f "$framework" --filter-not-trait "Category=Package" \
-    --report-xunit-junit --report-xunit-junit-filename "dotnet-$framework.junit.xml" \
-    --results-directory "$report_dir/dotnet" || fail "dotnet test failed with exit code $?"
+    "${report_args[@]}" || fail "dotnet test failed with exit code $?"
 done
 
 echo "$script_name: Rust and C# suites passed"

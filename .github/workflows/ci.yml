@@ -51,12 +51,13 @@ jobs:
       # cargo nextest with --features test-hooks, which the default pass compiles out, and a doc-test
       # pass) and the C# suite in one pass, so the host RID's library has to exist first: its stamp
       # check refuses to run the suite against a library older than the sources it would be testing.
+      # --report is what makes that pass write the JUnit reports under artifacts/test-results/.
       - name: Stage the host RID's native library
         shell: bash
         run: scripts/build.sh
       - name: Run the Rust and C# suites
         shell: bash
-        run: scripts/test.sh
+        run: scripts/test.sh --report
 
   # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
   # The job is named after the assertion it carries, so the check that carries the claim is the one a

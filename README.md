@@ -306,16 +306,16 @@ repository.
 ```console
 bash scripts/version.sh    # report the version the crate, the lockfile and the package carry
 bash scripts/build.sh      # stage the host RID's native library
-bash scripts/test.sh       # verify the staged library, then run both suites and write the reports
+bash scripts/test.sh       # verify the staged library, then run both suites; --report adds the reports
 bash scripts/release.sh    # pack artifacts/RustTrafilatura.<version>.nupkg, then check it
 bash scripts/bench.sh      # the round-trip ratio under its budget
 ```
 
 The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags.
 `test.sh` needs `cargo-nextest` because `cargo test` cannot write a report on stable Rust: libtest's
-machine-readable output is unstable, so the JUnit report comes from nextest's own reporter. Every test
-command writes one into `artifacts/test-results/`, which is the gitignored directory the CI workflow's
-report step publishes from.
+machine-readable output is unstable, so the JUnit report comes from nextest's own reporter. `test.sh
+--report` writes one per test command into `artifacts/test-results/`, the gitignored directory the CI
+workflow's report step publishes from; the runs are the same without it and no file is written.
 `version.sh --check` fails when the crate version in `rust/Cargo.toml`, the entry cargo writes into
 `rust/Cargo.lock` and `<Version>` in the package project disagree; `--check --tag vX.Y.Z` also fails
 when that tag does not name the version the sources carry, and `--set X.Y.Z` writes one version into

@@ -1,15 +1,20 @@
-# The JUnit reports for the two runs scripts/test.* makes. nextest does not run doctests, which is why
-# a `cargo test --doc` step stays beside these two runs rather than disappearing with `cargo test`.
+# The JUnit reports for the two Rust runs scripts/test.* --report makes. A relative `path` is resolved
+# under `<workspace>/target/nextest/<profile>/`, so reaching the repository's gitignored artifacts tree
+# — where the .NET reports are written too, which is what lets one report step publish both languages —
+# takes four levels up from `rust/target/nextest/<profile>/`. `report-name` is set because the default
+# is the same for every run, and two reports with one name are two reports a reader cannot tell apart.
 #
-# A relative `path` is resolved under `<workspace>/target/nextest/<profile>/`, so reaching the
-# repository's gitignored artifacts tree — where the .NET reports are written too, which is what lets
-# one report step publish both languages — takes four levels up from `rust/target/nextest/<profile>/`.
-# `report-name` is set because the default is the same for every run, and two reports with one name are
-# two reports a reader cannot tell apart.
+# Three profiles, and fail-fast is off in all of them except `default`:
+#   plain       what scripts/test.* runs without --report: no file, and every test's result reported at
+#               the end rather than at the first failure
+#   junit-*     what it runs with --report: the same, plus a file each
+#   default     what cargo-mutants runs, where stopping at the first failure is the point
 #
-# fail-fast is off in the two profiles below and left at nextest's own default (on) in `default`,
-# because this one file also serves cargo-mutants: a report wants every test's result, while a mutation
-# run wants the first failure that kills the mutant and nothing after it.
+# nextest does not run doctests, which is why a `cargo test --doc` step stays beside these runs instead
+# of disappearing with `cargo test`.
+[profile.plain]
+fail-fast = false
+
 [profile.junit-default]
 fail-fast = false
 

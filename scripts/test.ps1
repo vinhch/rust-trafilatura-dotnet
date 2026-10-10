@@ -27,8 +27,6 @@ Runs every command CI runs: cargo fmt --check, cargo clippy --locked --all-targe
 cargo nextest run --locked and a second cargo nextest run --locked --features test-hooks in rust/,
 a cargo test --locked --doc for the doc tests nextest does not run, then dotnet build -c Release and
 one dotnet test -c Release per target framework in dotnet/.
-Every test command writes a JUnit report under artifacts/test-results/, which is what the report step
-of the CI workflow publishes; the directory is gitignored and holding the reports is its only purpose.
 The staged native library is verified against its build stamp first, so a stale or placeholder
 artifact fails the run instead of passing against nothing.
 
@@ -36,18 +34,23 @@ Tests in the Package category are excluded: they read the packed .nupkg, which o
 scripts/release.ps1 produces, and this run has to pass on a checkout that has built the library and
 never packed. scripts/release.ps1 runs them after packing, where a missing entry fails the release.
 
+  --report     Write the JUnit reports the CI workflow publishes, under artifacts/test-results/: one
+               per Rust run and one per target framework. Nothing is written without it, and the
+               directory is cleared first, so a report cannot outlive the run it describes.
   -h, --help   Show this message.
 "@ | Write-Host
 }
 
 # Parsed by hand instead of through param(): both shells must accept exactly the same arguments.
 $Help = $false
+$Report = $false
 for ($i = 0; $i -lt $args.Count; $i++) {
     $argument = [string]$args[$i]
     if ($argument -notlike '-*') { Fail "unknown argument: $argument" }
     switch (($argument -replace '^--?', '').ToLowerInvariant()) {
         'h' { $Help = $true }
         'help' { $Help = $true }
+        'report' { $Report = $true }
         default { Fail "unknown argument: $argument" }
     }
 }
@@ -81,6 +84,21 @@ if ($LASTEXITCODE -ne 0) {
     Fail "cargo nextest is not available: install it with 'cargo install cargo-nextest --locked'"
 }
 
+# The mode decides two things and nothing else: which nextest profile runs, and whether the .NET runs
+# are asked for a report. Every profile below runs the whole suite — fail-fast is off in all of them
+# except nextest's `default`, which cargo-mutants uses — so the only difference a caller sees is
+# whether files are written. The reports of an earlier run are removed first, because a report step
+# cannot tell one run's file from another's, and publishing yesterday's file as today's is the one
+# failure a report must not have.
+if ($Report) {
+    if (Test-Path $ReportDir) { Remove-Item -Recurse -Force $ReportDir }
+    $Profile = 'junit-default'
+    $HooksProfile = 'junit-test-hooks'
+} else {
+    $Profile = 'plain'
+    $HooksProfile = 'plain'
+}
+
 # The guard lives in the build script, whose stamp it checks: that keeps one implementation of the
 # digest per shell, so the writer and the verifier cannot drift apart. It reports a missing staged
 # directory, a missing stamp or a stale artifact, and its exit code is this script's.
@@ -99,7 +117,7 @@ Write-Host "$ScriptName`: cargo clippy --locked --all-targets -- -D warnings"
 if ($LASTEXITCODE -ne 0) { Fail "cargo clippy failed with exit code $LASTEXITCODE" }
 
 Write-Host "$ScriptName`: cargo nextest run --locked"
-& cargo nextest run --locked --manifest-path $Manifest --profile junit-default
+& cargo nextest run --locked --manifest-path $Manifest --profile $Profile
 if ($LASTEXITCODE -ne 0) { Fail "cargo nextest failed with exit code $LASTEXITCODE" }
 
 # The test-hooks feature gates four tests, three of them allocation-counter tests
@@ -110,7 +128,7 @@ if ($LASTEXITCODE -ne 0) { Fail "cargo nextest failed with exit code $LASTEXITCO
 # nothing. The staged library stays the default build, because scripts/release.* refuses an artifact
 # that exports the feature's symbols.
 Write-Host "$ScriptName`: cargo nextest run --locked --features test-hooks"
-& cargo nextest run --locked --manifest-path $Manifest --features test-hooks --profile junit-test-hooks
+& cargo nextest run --locked --manifest-path $Manifest --features test-hooks --profile $HooksProfile
 if ($LASTEXITCODE -ne 0) { Fail "cargo nextest --features test-hooks failed with exit code $LASTEXITCODE" }
 
 # nextest runs every test binary and no doc test, so the doc tests keep a step of their own: dropping
@@ -127,19 +145,25 @@ if ($LASTEXITCODE -ne 0) { Fail "dotnet build failed with exit code $LASTEXITCOD
 # The filter is xunit v3's own trait flag: the test project runs on Microsoft.Testing.Platform, opted
 # in by global.json, and that platform does not accept the VSTest --filter expression syntax.
 #
-# One invocation per target framework: the report's file name is fixed, and a single invocation over
-# both assets would have the second framework overwrite the first one's report. The framework list is
-# read from the props that declare it rather than repeated here, so the two cannot disagree, and each
-# name carries the framework so a reader can tell the two reports apart.
+# One invocation per target framework, in both modes: the report's file name is fixed, and a single
+# invocation over both assets could only carry one name for the two of them. The framework list is read
+# from the props that declare it rather than repeated here, so the two cannot disagree.
 $Frameworks = [regex]::Match(
     (Get-Content (Join-Path $DotnetDir 'Directory.Build.props') -Raw),
     '<TargetFrameworks>([^<]*)</TargetFrameworks>').Groups[1].Value
 if (-not $Frameworks) { Fail "no TargetFrameworks in $(Join-Path $DotnetDir 'Directory.Build.props')" }
 foreach ($framework in $Frameworks.Split(';')) {
+    $ReportArgs = @()
+    if ($Report) {
+        $ReportArgs = @(
+            '--report-xunit-junit',
+            '--report-xunit-junit-filename', "dotnet-$framework.junit.xml",
+            '--results-directory', (Join-Path $ReportDir 'dotnet')
+        )
+    }
+
     Write-Host "$ScriptName`: dotnet test -c Release -f $framework (Package category excluded)"
-    & dotnet test --solution $Solution -c Release -f $framework --filter-not-trait "Category=Package" `
-        --report-xunit-junit --report-xunit-junit-filename "dotnet-$framework.junit.xml" `
-        --results-directory (Join-Path $ReportDir 'dotnet')
+    & dotnet test --solution $Solution -c Release -f $framework --filter-not-trait "Category=Package" @ReportArgs
     if ($LASTEXITCODE -ne 0) { Fail "dotnet test failed with exit code $LASTEXITCODE" }
 }
 
