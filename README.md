@@ -323,10 +323,17 @@ all three without committing or tagging.
 
 A release is that one version and one tag: `scripts/version.sh --set X.Y.Z` writes the version into both
 manifests and lets cargo write it into the lockfile, those three files are committed, and then
-`git tag vX.Y.Z` is pushed. Only a tag push starts `.github/workflows/release.yml`, which builds all
-five RIDs, packs the package and publishes it through the `nuget` environment. Every other change is
-verified by `.github/workflows/ci.yml` on push and pull request. Starting the release workflow by hand
-builds and checks a package without publishing it, which is how `main` is checked before a tag exists.
+`git tag vX.Y.Z` is pushed. Only a tag push starts `.github/workflows/release.yml`, which builds all five
+RIDs, packs and attests the package, and creates the GitHub Release with that package attached. Publishing
+it to NuGet is a separate workflow and a manual decision: `.github/workflows/publish.yml` takes the tag as
+its input, downloads the release's package, verifies the attestation that ties it to that tag, obtains a
+short-lived API key from nuget.org and pushes. No API key is stored: the key comes from nuget.org's trusted
+publishing, which issues it against a policy naming this repository, the `publish.yml` workflow file and
+the `nuget` environment, so the only secret involved is `NUGET_USER`, the nuget.org profile name. Its
+`dry_run` input runs the same checks and the same key exchange, stopping before the push. Every other
+change is verified by `.github/workflows/ci.yml` on push and pull request. Starting the release workflow by
+hand builds and checks a package without attesting it or creating a release, which is how `main` is checked
+before a tag exists.
 
 `release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
 staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed

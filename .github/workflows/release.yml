@@ -1,10 +1,11 @@
 # Builds every RID and produces the package. Split from ci.yml by cost: five native builds are minutes
-# each, so nothing here runs the suites. The trigger is a tag push, which is the only event that can
-# publish: no push to a branch and no pull request starts this workflow, so the package is built where it
-# is released. A manual start runs the same pipeline without the two tag-gated steps, which is how a
-# package is checked against main before a tag exists. Actions are pinned to a commit SHA with their
-# version in a trailing comment; the toolchain pin's comment in ci.yml says why Dependabot cannot move
-# that one.
+# each, so nothing here runs the suites. The trigger is a tag push, which is the only event that
+# releases: no push to a branch and no pull request starts this workflow, so the package is built where
+# it is released, and the GitHub Release this workflow creates is where the package stays available for
+# publish.yml to pick up by hand. A manual start runs the same pipeline without attesting or creating a
+# release, which is how a package is checked against main before a tag exists. Actions are pinned to a
+# commit SHA with their version in a trailing comment; the toolchain pin's comment in ci.yml says why
+# Dependabot cannot move that one.
 name: release
 
 on:
@@ -12,10 +13,10 @@ on:
     tags:
       - 'v[0-9]*.[0-9]*.[0-9]*'
   # The dry run: `native` and `package` build and check the package on the ref that was chosen, and
-  # neither attests nor publishes, because both are gated on a tag push. The optional input is the one
-  # thing a dry run cannot see for itself, the tag the caller intends to create: it is what the sources
-  # are checked against when the run has no tag of its own, and it has to agree with the ref when it has
-  # one.
+  # neither attests nor creates a release, because both are gated on a tag push. The optional input is
+  # the one thing a dry run cannot see for itself, the tag the caller intends to create: it is what the
+  # sources are checked against when the run has no tag of its own, and it has to agree with the ref
+  # when it has one.
   workflow_dispatch:
     inputs:
       tag:
@@ -119,6 +120,11 @@ jobs:
           # by name, and Package_Contains_AllRidsAndLicenses asserts the package carries no stamp.
           path: dotnet/src/RustTrafilatura/runtimes/
           if-no-files-found: error
+          # One day, the documented minimum: the package job reads this minutes later and is the only
+          # reader there is. A retry of that job a day later finds nothing to download and re-runs the
+          # five native builds instead, which is a few minutes of CI against 60 MB kept for five builds
+          # no one installs. The package itself is what a consumer gets.
+          retention-days: 1
 
   package:
     name: package
@@ -154,44 +160,47 @@ jobs:
           name: nupkg
           path: artifacts/*.nupkg
           if-no-files-found: error
+          # Seven days, against one for the five native artifacts: this artifact is what the release job
+          # reads, so the longer retention is what lets that job be re-run after a failure without
+          # rebuilding the package. What has to last is the release asset, and it already does.
+          retention-days: 7
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         # What the attestation covers is the release artifact, so it runs only on a tag push, which is
-        # the only run that can publish: a manual start builds and checks a package nobody releases. The
-        # `publish` job publishes the exact bytes this step attested.
+        # the only run that can release: a manual start builds and checks a package nobody releases. The
+        # `github-release` job attaches the exact bytes this step attested to the GitHub Release, and
+        # publish.yml verifies that attestation before it pushes them to NuGet.
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         with:
           subject-path: artifacts/*.nupkg
 
-  publish:
-    name: publish
-    # Gated on the event and the ref together: only a tag push reaches this job, so a manual start on a
-    # tag is a rehearsal rather than a release, and no workflow pushes a version by itself. Re-running the
-    # failed jobs of that tag push is what retries a publish. The `nuget` environment's required reviewer
-    # is a repository setting; naming the environment here is what routes the run through it.
+  # The release itself. It is its own job so that contents: write is granted to one job, and the bytes it
+  # attaches are the ones the jobs above built and attested rather than a second pack. Re-running this job
+  # after a failure updates the release the first attempt created instead of failing on it.
+  github-release:
+    name: github-release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: package
     runs-on: ubuntu-latest
-    environment: nuget
     permissions:
-      contents: read
+      contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
+      # No checkout: the action works through the API, and the only file it needs is the downloaded one.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nupkg
           path: artifacts
-      # --push-only publishes the bytes the package job built and attested. Packing here would write a
-      # second file that the attestation does not cover, which is the whole point of reusing the
-      # artifact instead of rebuilding it. RELEASE_TAG is the tag this release is for, and the script
-      # refuses a tag that does not name the version it is about to publish, so a tag pushed against
-      # the wrong commit cannot publish a version nobody asked for. Both values are read from the
-      # environment by the script.
-      - name: Publish the package
-        shell: bash
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: scripts/release.sh --push-only
+      # The action creates the release as a draft, uploads the assets and publishes it afterwards, so no
+      # release is ever visible without its package attached. The tag is not re-created: the release is
+      # made against the tag this run was started for.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: artifacts/*.nupkg
+          # A missing package has to fail here rather than publish a release with no asset on it.
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          # A tag carrying a pre-release part names a pre-release, and NuGet reads the same suffix the
+          # same way from the package's version. The tag pattern this workflow triggers on cannot hold a
+          # hyphen except in that suffix, so this one expression is the whole test.
+          prerelease: ${{ contains(github.ref_name, '-') }}
