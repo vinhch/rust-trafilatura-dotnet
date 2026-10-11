@@ -1,4 +1,4 @@
-# RustTrafilatura DotNet
+# RustTrafilatura DotNet ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/rust-trafilatura-dotnet/ci.yml?branch=main) [![Nuget](https://img.shields.io/nuget/v/RustTrafilatura?maxAge=3600)](https://www.nuget.org/packages/RustTrafilatura/)
 
 .NET binding for [`rust-trafilatura`](https://github.com/markusmobius/rust-trafilatura), the crate linked into a native library per RID and called in
 process over a length-delimited C ABI. Extraction is the crate's; this package supplies the ABI, the
@@ -353,8 +353,8 @@ never tested and never packed.
 
 ## Credits
 
-[adbar/trafilatura](https://github.com/adbar/trafilatura) defines the extraction this package follows.
-[rust-trafilatura](https://github.com/markusmobius/rust-trafilatura) is the crate this package binds.
+- [adbar/trafilatura](https://github.com/adbar/trafilatura) defines the extraction this package follows.
+- [rust-trafilatura](https://github.com/markusmobius/rust-trafilatura) is the crate this package binds.
 
 ## License
 
