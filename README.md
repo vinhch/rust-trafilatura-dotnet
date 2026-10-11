@@ -324,8 +324,8 @@ puts one JUnit file per test command into `artifacts/test-results/`, the directo
 publishes from. `version.sh --set` and `--check` are what keep the crate version, the lockfile entry and the
 package `<Version>` one number.
 
-Cutting a release is in [`docs/releasing.md`](docs/releasing.md): the version, the tag, the GitHub Release
-that tag creates, and the manual publish to NuGet through trusted publishing.
+Cutting a release is in [`docs/releasing.md`](docs/releasing.md): the version, the tag, the checks and the
+GitHub Release that tag produces, and the manual publish to NuGet through trusted publishing.
 
 `release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
 staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed `.nupkg`,
