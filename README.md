@@ -300,8 +300,16 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 
 ## Development
 
-Prerequisites: the .NET SDK, a Rust toolchain, `cargo-nextest` for `test.sh`, and a checkout of this
-repository.
+Prerequisites, with the minimum version of each:
+
+| Tool | Minimum | Needed by |
+| --- | --- | --- |
+| .NET SDK | 10.0.100 | everything under `dotnet/` |
+| .NET 8 runtime | 8.0 | the `net8.0` tests |
+| Rust toolchain | 1.98.1 | everything under `rust/` |
+| `cargo-nextest` | 0.9.148 | `test.sh` |
+| `cargo-mutants` | latest | the mutation runs in `quality.yml` |
+| clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer |
 
 ```console
 bash scripts/version.sh    # report the version the crate, the lockfile and the package carry
@@ -311,47 +319,28 @@ bash scripts/release.sh    # pack artifacts/RustTrafilatura.<version>.nupkg, the
 bash scripts/bench.sh      # the round-trip ratio under its budget
 ```
 
-The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags.
-`test.sh` needs `cargo-nextest` because `cargo test` cannot write a report on stable Rust: libtest's
-machine-readable output is unstable, so the JUnit report comes from nextest's own reporter. `test.sh
---report` writes one per test command into `artifacts/test-results/`, the gitignored directory the CI
-workflow's report step publishes from; the runs are the same without it and no file is written.
-`version.sh --check` fails when the crate version in `rust/Cargo.toml`, the entry cargo writes into
-`rust/Cargo.lock` and `<Version>` in the package project disagree; `--check --tag vX.Y.Z` also fails
-when that tag does not name the version the sources carry, and `--set X.Y.Z` writes one version into
-all three without committing or tagging.
+The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags. `test.sh --report`
+puts one JUnit file per test command into `artifacts/test-results/`, the directory the CI report step
+publishes from. `version.sh --set` and `--check` are what keep the crate version, the lockfile entry and the
+package `<Version>` one number.
 
-A release is that one version and one tag: `scripts/version.sh --set X.Y.Z` writes the version into both
-manifests and lets cargo write it into the lockfile, those three files are committed, and then
-`git tag vX.Y.Z` is pushed. Only a tag push starts `.github/workflows/release.yml`, which builds all five
-RIDs, packs and attests the package, and creates the GitHub Release with that package attached. Publishing
-it to NuGet is a separate workflow and a manual decision: `.github/workflows/publish.yml` takes the tag as
-its input, downloads the release's package, verifies the attestation that ties it to that tag, obtains a
-short-lived API key from nuget.org and pushes. No API key is stored: the key comes from nuget.org's trusted
-publishing, which issues it against a policy naming this repository, the `publish.yml` workflow file and
-the `nuget` environment, so the only secret involved is `NUGET_USER`, the nuget.org profile name. Its
-`dry_run` input runs the same checks and the same key exchange, stopping before the push. Every other
-change is verified by `.github/workflows/ci.yml` on push and pull request. Starting the release workflow by
-hand builds and checks a package without attesting it or creating a release, which is how `main` is checked
-before a tag exists.
+Cutting a release is in [`docs/releasing.md`](docs/releasing.md): the version, the tag, the GitHub Release
+that tag creates, and the manual publish to NuGet through trusted publishing.
 
 `release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
-staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed
-`.nupkg`, so `test.sh` leaves it out and a bare `dotnet test` includes it: skip it with xunit v3's own
-`--filter-not-trait "Category=Package"`. The test project runs on Microsoft.Testing.Platform, opted in
-by the `test` section of `global.json`, which is why a trait flag replaces the VSTest `--filter`
-expression and why the project is an executable.
+staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed `.nupkg`,
+so `test.sh` leaves it out and a bare `dotnet test` includes it: skip it with xunit v3's own
+`--filter-not-trait "Category=Package"`. The test project is an executable on Microsoft.Testing.Platform,
+opted in by the `test` section of `global.json`, which is why a trait flag replaces the VSTest `--filter`
+expression. A locally packed package whose version is already installed needs a fresh `NUGET_PACKAGES`
+folder or the cached entry cleared, because NuGet resolves by version.
 
-`bench.sh` compares one `rt_extract` call against a direct call into the `rust-trafilatura` core on
-the same fixture and machine, and fails when the ratio exceeds its budget; it is a ratio, not a
-throughput figure. The allocation and speed analysis is in
-[`docs/research/binding-performance.md`](docs/research/binding-performance.md).
+`bench.sh` compares one `rt_extract` call against a direct call into the `rust-trafilatura` core, and fails
+when the ratio exceeds its budget; it is a ratio, not a throughput figure. The allocation and speed analysis
+is in [`docs/research/binding-performance.md`](docs/research/binding-performance.md).
 
-A locally packed package whose version is already installed needs a fresh `NUGET_PACKAGES` folder or
-the cached entry cleared, because NuGet resolves by version.
-
-`dotnet/tests/RustTrafilatura.AotConsumer` is not in `dotnet/RustTrafilatura.sln`: it is published
-and run, never tested and never packed.
+`dotnet/tests/RustTrafilatura.AotConsumer` is not in `dotnet/RustTrafilatura.sln`: it is published and run,
+never tested and never packed.
 
 ## Credits
 
