@@ -4,8 +4,8 @@
 # built, and the README, the license files and the third-party notices have to be present, so a package is refused rather
 # than published half-complete. Each staged library is also checked for the test-hooks exports, which
 # exist only in a build of the test suite and must not reach a shipped artifact. Packing itself is
-# delegated to the package project; this script decides what is packable and never pushes unless
-# --push or --push-only says so.
+# delegated to the package project; this script decides what is packable, and packing never pushes:
+# --push-only is the one flag that publishes, and it publishes a file that is already there.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -31,6 +31,10 @@ $Libraries = @{
 }
 $PackageFiles = @('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')
 $Project = 'dotnet/src/RustTrafilatura/RustTrafilatura.csproj'
+# The feed a push goes to. NuGet does not fall back to the package sources of a NuGet.Config for push:
+# without --source it stops with "Source parameter was not specified", and a defaultPushSource in some
+# config would send the package somewhere else instead, on the one step nothing later can undo.
+$PushSource = 'https://api.nuget.org/v3/index.json'
 # The two exports the `test-hooks` feature adds to rust/src/lib.rs. The panicking one is an export a
 # release build must not carry, and the counter beside it comes from the same feature, so the shipped
 # library must hold neither.
@@ -64,7 +68,7 @@ function Assert-NoTestHooks {
 
 function Show-Usage {
     @"
-Usage: scripts/$ScriptName [--allow-partial] [--push | --push-only]
+Usage: scripts/$ScriptName [--allow-partial] [--push-only]
 
 Packs artifacts/RustTrafilatura.<version>.nupkg from the native libraries staged under
 dotnet/src/RustTrafilatura/runtimes/<rid>/native/, with the README, the license files and
@@ -74,14 +78,12 @@ that exports a test-hooks symbol is refused, because that feature is built only 
 
   --allow-partial  Pack the RIDs that are staged and report them, instead of refusing when one
                    of the five is missing. The RIDs that are present must still be complete.
-                   Refused together with --push and --push-only: what it packs is not a release
-                   package.
-  --push           Publish the package with the NUGET_API_KEY environment variable. A push
-                   that is already on the feed is skipped, not an error.
+                   Refused together with --push-only: what it packs is not a release package.
   --push-only      Publish the package already in artifacts/ and pack nothing, which is what the
-                   tag-gated publish job uses so the bytes it publishes are the ones the package
-                   job built and attested. Requires NUGET_API_KEY and that file, and requires
-                   RELEASE_TAG to name this version (v<version>).
+                   publish workflow uses on a package it downloaded from a GitHub Release, so the
+                   bytes it publishes are the ones that release built and attested. Requires
+                   an API key in NUGET_API_KEY and that file, and requires RELEASE_TAG to name
+                   this version (v<version>).
   -h, --help       Show this message.
 "@ | Write-Host
 }
@@ -89,7 +91,6 @@ that exports a test-hooks symbol is refused, because that feature is built only 
 # Parsed by hand instead of through param(): both shells must accept exactly the same arguments, and
 # the `--flag` spelling has to work in the form the other shell documents.
 $AllowPartial = $false
-$Push = $false
 $PushOnly = $false
 $Help = $false
 for ($i = 0; $i -lt $args.Count; $i++) {
@@ -97,7 +98,6 @@ for ($i = 0; $i -lt $args.Count; $i++) {
     if ($argument -notlike '-*') { Fail "unknown argument: $argument" }
     switch (($argument -replace '^--?', '').ToLowerInvariant()) {
         'allow-partial' { $AllowPartial = $true }
-        'push' { $Push = $true }
         'push-only' { $PushOnly = $true }
         'h' { $Help = $true }
         'help' { $Help = $true }
@@ -110,20 +110,16 @@ if ($Help) {
     exit 0
 }
 
-if ($Push -and $PushOnly) {
-    Fail '--push and --push-only are mutually exclusive: --push packs and pushes, --push-only pushes the package already in artifacts/.'
-}
-
 # A partial package is what this script itself calls "not a release package", so a push must not be
 # able to carry one: publishing is the one step nothing later can undo.
-if ($AllowPartial -and ($Push -or $PushOnly)) {
-    Fail '--allow-partial cannot be combined with --push or --push-only: --allow-partial packs the RIDs that happen to be staged and is not a release package, so a push would publish an incomplete one. Stage all five RIDs and pack without --allow-partial.'
+if ($AllowPartial -and $PushOnly) {
+    Fail '--allow-partial cannot be combined with --push-only: --allow-partial packs the RIDs that happen to be staged and is not a release package, so pushing it would publish an incomplete one. Stage all five RIDs and pack without --allow-partial.'
 }
 
-# Checked before anything is packed: a missing key discovered after a successful pack would leave a
-# package behind that looks like the result of a release that never happened.
-if (($Push -or $PushOnly) -and -not $env:NUGET_API_KEY) {
-    Fail '--push and --push-only need the NUGET_API_KEY environment variable, which is not set. Nothing was packed or pushed.'
+# Checked here rather than beside the push, so a run that cannot publish says so before it looks for
+# the file it would publish.
+if ($PushOnly -and -not $env:NUGET_API_KEY) {
+    Fail '--push-only needs an API key in the NUGET_API_KEY environment variable, which is not set. Nothing was pushed.'
 }
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -157,7 +153,7 @@ if ($PushOnly) {
     }
     Write-Host "$ScriptName`: pushing   $Package"
     # --skip-duplicate makes a re-run of a release idempotent instead of a failure.
-    dotnet nuget push $Package --api-key $env:NUGET_API_KEY --skip-duplicate
+    dotnet nuget push $Package --api-key $env:NUGET_API_KEY --skip-duplicate --source $PushSource
     if ($LASTEXITCODE -ne 0) { Fail "dotnet nuget push failed with exit code $LASTEXITCODE" }
     Write-Host "$ScriptName`: pushed    $Package"
     exit 0
@@ -224,9 +220,3 @@ Write-Host "$ScriptName`: checking  $TestsProject (Package category)"
 dotnet test --project $TestsProject -c Release --filter-trait 'Category=Package'
 if ($LASTEXITCODE -ne 0) { Fail "the package-content tests failed with exit code $LASTEXITCODE, so $Package is not a package this repository will ship" }
 
-if ($Push) {
-    # --skip-duplicate makes a re-run of a release idempotent instead of a failure.
-    dotnet nuget push $Package --api-key $env:NUGET_API_KEY --skip-duplicate
-    if ($LASTEXITCODE -ne 0) { Fail "dotnet nuget push failed with exit code $LASTEXITCODE" }
-    Write-Host "$ScriptName`: pushed    $Package"
-}
