@@ -6,7 +6,9 @@
 //! success and failure keep one envelope shape.
 
 use crate::contract::{self, ConfigJson, Header, Request, ResponseField, SCHEMA_VERSION};
-use rust::{Config, ExtractResult, ExtractionFocus, HtmlDateMode, Metadata, Options, Tree, Url};
+use rust_trafilatura::{
+    Config, ExtractResult, ExtractionFocus, HtmlDateMode, Metadata, Options, Tree, Url,
+};
 use serde::Serialize;
 
 /// The response `metadata` object: one key per core [`Metadata`] field.
@@ -66,7 +68,7 @@ pub struct Response {
 pub fn build(request: &Request, payload: &[u8]) -> Response {
     assemble(
         request,
-        rust::extract(payload, &options_from(&request.header)),
+        rust_trafilatura::extract(payload, &options_from(&request.header)),
     )
 }
 
@@ -80,7 +82,10 @@ pub fn build_from_html(request: &Request, html: &str) -> Response {
 }
 
 /// Fills in the requested fields of a response from the core's result, or the error envelope.
-fn assemble(request: &Request, extracted: Result<ExtractResult, rust::Error>) -> Response {
+fn assemble(
+    request: &Request,
+    extracted: Result<ExtractResult, rust_trafilatura::Error>,
+) -> Response {
     let fields = &request.fields;
     let mut response = Response {
         schema_version: SCHEMA_VERSION,
@@ -329,7 +334,7 @@ mod tests {
     use super::*;
     use crate::contract::parse_request;
     use chrono::TimeZone;
-    use rust::rust_htmldate::Timezone;
+    use rust_trafilatura::rust_htmldate::Timezone;
     use serde_json::json;
 
     const TEXT_ONLY: &[u8] = br#"{"responseFields":["contentText"]}"#;
@@ -342,7 +347,7 @@ mod tests {
         for (index, html) in FIXTURES.iter().enumerate() {
             let request = parse_request(TEXT_ONLY).unwrap();
             let response = build(&request, html.as_bytes());
-            let expected = rust::extract(html.as_bytes(), &Options::default()).unwrap();
+            let expected = rust_trafilatura::extract(html.as_bytes(), &Options::default()).unwrap();
             assert_eq!(
                 response.content_text.as_deref(),
                 Some(expected.content_text.as_str()),
@@ -474,7 +479,7 @@ mod tests {
             &parse_request(br#"{"responseFields":["contentHtml"]}"#).unwrap(),
             html,
         );
-        let expected = rust::extract(html, &Options::default()).unwrap();
+        let expected = rust_trafilatura::extract(html, &Options::default()).unwrap();
         let expected_html = expected
             .content_node
             .document
@@ -680,8 +685,11 @@ mod tests {
             }),
             ..Options::default()
         };
-        let expected = rust::extract(FIXTURES[0].as_bytes(), &options).unwrap_err();
-        assert!(matches!(expected, rust::Error::OutputTooShort(..)));
+        let expected = rust_trafilatura::extract(FIXTURES[0].as_bytes(), &options).unwrap_err();
+        assert!(matches!(
+            expected,
+            rust_trafilatura::Error::OutputTooShort(..)
+        ));
         let response = build(
             &parse_request(br#"{"options":{"config":{"minOutputSize":10000}}}"#).unwrap(),
             FIXTURES[0].as_bytes(),
@@ -701,7 +709,7 @@ mod tests {
     fn options_absent_uses_core_defaults() {
         let html = FIXTURES[0].as_bytes();
         let response = build(&parse_request(br#"{}"#).unwrap(), html);
-        let expected = rust::extract(html, &Options::default()).unwrap();
+        let expected = rust_trafilatura::extract(html, &Options::default()).unwrap();
         assert_eq!(
             response.content_text.as_deref(),
             Some(expected.content_text.as_str())

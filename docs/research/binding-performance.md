@@ -22,7 +22,7 @@ Intel Core i7-9850H, Windows 11 Pro build 26300, with rustc 1.98.1 and the `benc
 
 | Path | Mean ms/call | Ratio | Note |
 | --- | --- | --- | --- |
-| `core` | 23.532 | 1.000 | `rust::extract`, what `rt_extract` calls internally |
+| `core` | 23.532 | 1.000 | `rust_trafilatura::extract`, what `rt_extract` calls internally |
 | `roundtrip` | 23.250 | 0.988 | `rt_extract` + `rt_free`, default `responseFields` |
 | `roundtripHtml` | 24.281 | 1.032 | same plus `contentHtml` (informational) |
 

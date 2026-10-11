@@ -5,7 +5,8 @@
 //!
 //! Three paths, one fixture, one pinned option set:
 //!
-//! - `core`: `rust::extract(payload, &options)`, which is what `rt_extract` calls internally.
+//! - `core`: `rust_trafilatura::extract(payload, &options)`, which is what `rt_extract` calls
+//!   internally.
 //! - `roundtrip`: `rt_extract` plus `rt_free` with the default `responseFields`
 //!   (`contentText`, `commentsText`, `metadata`).
 //! - `roundtripHtml`: the same round trip with `contentHtml` added, the opt-in D11 keeps off by
@@ -21,7 +22,7 @@
 //! — and three consecutive measurements would hand the last path an advantage of the same order as
 //! the overhead being measured.
 
-use rust::Options;
+use rust_trafilatura::Options;
 use rust_trafilatura_ffi::{rt_extract, rt_free};
 use serde_json::Value;
 use std::fmt::Write as _;
@@ -89,7 +90,7 @@ fn main() {
         "the fixture generator changed: update FIXTURE_LEN and the fixture size in the spec"
     );
 
-    let core = rust::extract(payload, &options).expect("the fixture must extract");
+    let core = rust_trafilatura::extract(payload, &options).expect("the fixture must extract");
     let (default_response, default_bytes) = response(HEADER_DEFAULT, payload);
     let (html_response, html_bytes) = response(HEADER_HTML, payload);
 
@@ -188,7 +189,7 @@ fn measure(payload: &[u8], options: &Options) -> [f64; 3] {
 fn run(path: usize, payload: &[u8], options: &Options) {
     match path {
         CORE => {
-            rust::extract(payload, options).expect("the fixture must extract");
+            rust_trafilatura::extract(payload, options).expect("the fixture must extract");
         }
         ROUNDTRIP => {
             let (code, _) = round_trip(HEADER_DEFAULT, payload);

@@ -129,8 +129,8 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; fin
 
 The test is `rust/src/engine.rs:341`. It loops over `FIXTURES`, a `[&str; 11]` of inline documents
 (`engine.rs:277`), and for each one compares the response the wrapper produced with
-`rust::extract(html.as_bytes(), &Options::default())` — the core crate called directly, with core
-defaults — failing with the fixture index in the message.
+`rust_trafilatura::extract(html.as_bytes(), &Options::default())` — the core crate called directly,
+with core defaults — failing with the fixture index in the message.
 
 The same test also passed inside the full suite of section 1:
 

@@ -5,8 +5,8 @@
 //! never touches the core's `Options` or builds a response envelope; `engine` owns both.
 
 use chrono::{DateTime, SecondsFormat};
-use rust::rust_htmldate::{ExtractionResult, Timezone};
-use rust::Error;
+use rust_trafilatura::rust_htmldate::{ExtractionResult, Timezone};
+use rust_trafilatura::Error;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -152,7 +152,7 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
     }
 
     if let Some(url) = &header.url {
-        if !url.is_empty() && !rust::url::is_absolute_url(url) {
+        if !url.is_empty() && !rust_trafilatura::url::is_absolute_url(url) {
             return Err(RequestError::InvalidUrl(url.clone()));
         }
     }
