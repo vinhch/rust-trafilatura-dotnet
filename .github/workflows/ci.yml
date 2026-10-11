@@ -1,142 +1,19 @@
-# Fast feedback on every push and pull request: the two-platform suite and the AOT publish. Every job
-# either calls a scripts/ file that a developer can run, or runs the same tool, so a local run and this
-# workflow execute the same sequence. The rust-only checks, the supply-chain check and the weekly
-# measurements are in quality.yml, and the package build is in release.yml. Actions are pinned to a
-# commit SHA with their version in a trailing comment, and .github/dependabot.yml moves the ones whose
-# repository tags a release. The dtolnay/rust-toolchain pin is the tip of that repository's `1.98.1`
-# branch rather than a commit in its default branch, and that repository carries no version tags, so
-# Dependabot cannot move it: the branch is the version, and changing it is a deliberate edit here.
+# A tag does not trigger this: release.yml runs the same _ci.yml for the tagged commit.
 name: verify
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: test (${{ matrix.os }})
-    # The report step creates a check run, which is the one capability this job needs beyond reading the
-    # repository. It is set here rather than at the workflow level so the AOT job keeps contents: read.
+  verify:
+    name: verify
     permissions:
       contents: read
       checks: write
-    strategy:
-      # One runner's failure must not cancel the other: they are the two platforms the package has to
-      # work on, and a Windows-only failure is the interesting half.
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-        with:
-          # test.sh runs cargo fmt --check and cargo clippy, and the action installs a minimal
-          # profile, which carries neither.
-          components: rustfmt, clippy
-      # test.sh runs cargo nextest, which the toolchain action does not carry. The version is pinned the
-      # way the toolchain's is: a report is only comparable with another report when both came from the
-      # same producer, so the pin moves as a deliberate edit.
-      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
-        with:
-          tool: cargo-nextest@0.9.148
-      # No dotnet-version here or in any other workflow: the SDK is the one global.json names, which the
-      # action reads from the repository root, so the runner resolves what a local build resolves and
-      # there is one place to change it.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      # The crate version, the lockfile entry and the package version are one number in three files, and
-      # this is the only check on a push or a pull request that compares them. Files only, so it runs
-      # before anything is staged.
-      - name: Check the version the sources carry
-        shell: bash
-        run: scripts/version.sh --check
-      # test.sh runs the Rust suite (fmt check, clippy with -D warnings, cargo nextest, then a second
-      # cargo nextest with --features test-hooks, which the default pass compiles out, and a doc-test
-      # pass) and the C# suite in one pass, so the host RID's library has to exist first: its stamp
-      # check refuses to run the suite against a library older than the sources it would be testing.
-      # --report is what makes that pass write the JUnit reports under artifacts/test-results/.
-      - name: Stage the host RID's native library
-        shell: bash
-        run: scripts/build.sh
-      - name: Run the Rust and C# suites
-        shell: bash
-        run: scripts/test.sh --report
-      # Both steps below run after a failing suite on purpose: the run that failed is the one whose
-      # report a reader needs, and only the upload would be pointless without them.
-      #
-      # The files are uploaded before they are published because the check run is a rendering of them:
-      # its markdown and its annotation count are both capped, so the file is where a reader goes when
-      # the summary is cut short.
-      - name: Upload the test reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: test-reports-${{ matrix.os }}
-          path: artifacts/test-results/**/*.xml
-          # A missing file is reported by the publishing step below, once, rather than by both.
-          if-no-files-found: warn
-      # One step for both languages: `java-junit` is the generic JUnit XML parser, named for where the
-      # format came from rather than for a producer, and the xunit reporters and nextest both write it.
-      # A pull request from a fork runs with a read-only token and cannot create a check run, so this
-      # step cannot report there; the documented workaround is a second workflow_run workflow, which
-      # this repository does not have. The name carries the matrix value because two check runs of one
-      # name on one commit are one check run a reader cannot tell from the other.
-      - name: Publish the test report
-        if: ${{ !cancelled() }}
-        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
-        with:
-          name: test report (${{ matrix.os }})
-          path: artifacts/test-results/rust/*.xml,artifacts/test-results/dotnet/*.xml
-          reporter: java-junit
-
-  # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
-  # The job is named after the assertion it carries, so the check that carries the claim is the one a
-  # reader can find by it.
-  Aot_Publish_Extracts_A_Page:
-    name: Aot_Publish_Extracts_A_Page (${{ matrix.rid }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: win-x64
-            os: windows-latest
-            binary: RustTrafilatura.AotConsumer.exe
-          - rid: linux-x64
-            os: ubuntu-latest
-            binary: RustTrafilatura.AotConsumer
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      # Native AOT links the final binary with the platform toolchain, and the Linux image ships
-      # neither clang nor the zlib headers the linker needs.
-      - name: Install the Native AOT toolchain
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
-      - name: Stage the host RID's native library
-        shell: bash
-        run: scripts/build.sh
-      # PublishAot and the promotion are arguments rather than project properties: the consumer
-      # project stays readable as a plain consumer, and this job is where the claim is made. IL2026
-      # and IL3050 become errors so a reflection-based path cannot slip into the package unnoticed.
-      - name: Publish the consumer as Native AOT
-        shell: bash
-        run: |
-          dotnet publish dotnet/tests/RustTrafilatura.AotConsumer/RustTrafilatura.AotConsumer.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            -p:PublishAot=true \
-            '-p:WarningsAsErrors=IL2026%3BIL3050' \
-            -o artifacts/aot/${{ matrix.rid }}
-      - name: Run the published consumer
-        shell: bash
-        run: |
-          binary="artifacts/aot/${{ matrix.rid }}/${{ matrix.binary }}"
-          [ -x "$binary" ] || { echo "no published binary at $binary" >&2; exit 1; }
-          text="$("$binary")" || { echo "the published consumer exited non-zero" >&2; exit 1; }
-          [ -n "$text" ] || { echo "the published consumer printed no extracted text" >&2; exit 1; }
-          echo "$text"
+    uses: ./.github/workflows/_ci.yml

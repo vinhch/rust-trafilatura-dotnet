@@ -1,25 +1,13 @@
-# The rust-only checks that are not a per-push gate: the supply-chain check, the whole-crate mutation
-# pass and the round-trip ratio on the weekly run, and the diff-scoped mutation pass plus the same ratio
-# on a pull request that changes rust/. Every job calls a scripts/ file or runs the same tool a developer
-# can run, so a local run and this workflow execute the same sequence. The toolchain pin's comment in
-# ci.yml says why Dependabot cannot move that one.
+# The rust-only checks that are not a per-push gate.
 name: quality
 
 on:
   pull_request:
-    # What the filter keeps out is a measurement rather than a gate, which is why it sits on the
-    # trigger. It lists rust/ only: the mutation step fails on an empty diff, and the trigger is what
-    # keeps that guard meaning "the range could not be resolved" instead of "this pull request changed
-    # nothing to measure". There is no push trigger: the mutation step runs on a pull request or a
-    # schedule only, so a push would show its skipped step as a green check that measured nothing, and
-    # this is also what stops bench and core-untouched running on a rust-touching push, which the
-    # single workflow did before this file existed. The weekly run and the next rust-touching pull
-    # request are what cover the merged result instead.
+    # rust/ only: the mutation step fails on an empty diff, and a push trigger would show the skipped step
+    # as a green check that measured nothing.
     paths:
       - 'rust/**'
   schedule:
-    # The weekly run is the one nobody is watching: it is where the whole-crate mutation pass, the
-    # round-trip ratio and the advisory check show a slow change that no single pull request caused.
     - cron: '0 6 * * 1'
 
 permissions:
@@ -34,18 +22,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: markusmobius/rust-trafilatura
-          # The commit tag v2.2.8 points at, which is the version the dependency pins. A tag is
-          # mutable and this checkout is the evidence, so the commit is what is named.
+          # The commit tag v2.2.8 points at; a tag is mutable, and this checkout is the evidence.
           ref: d4a26ff6352640a36bd83f6e471583e90badb38e
           path: core
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      # The patch is a command-line argument rather than a manifest change: the crate depends on the
-      # published 2.2.8 by version, and this build is the one that reads the core sources instead. The
-      # path is absolute because a relative one is resolved against the patched package's own
-      # directory, not the checkout. --locked cannot apply: cargo refuses to resolve a patched package
-      # under it ("cannot update the lock file ... because --locked was passed"), even though the
-      # patch leaves the committed lock byte-identical. The assertion below is what verifies this
-      # build instead.
+      # The patch is an argument, not a manifest change, and the path must be absolute: a relative one
+      # resolves against the patched package. --locked cannot apply to a patched package, so the assertion
+      # below is what verifies this build.
       - name: Build the ffi crate against the core checkout
         run: cargo build --manifest-path rust/Cargo.toml --release --config 'patch.crates-io.rust-trafilatura.path="${{ github.workspace }}/core"'
       - name: Assert the core checkout is unchanged
@@ -60,49 +43,34 @@ jobs:
 
   mutants:
     name: mutants
-    # The whole-crate run mutates every function in the crate, so the job is bounded rather than
-    # trusted to finish: the pull request run is minutes, the weekly one is the long half.
     timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # --in-diff needs the pull request base to build the diff against.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
-          # nextest is here because cargo-mutants runs the suite through the test tool
-          # rust/.cargo/mutants.toml names, which is the same runner scripts/test.* uses.
           tool: |
             cargo-mutants
             cargo-nextest@0.9.148
-      # The exclusions and the test tool these runs use are the ones rust/.cargo/mutants.toml carries
-      # rather than any passed here, so a plain `cargo mutants` in rust/ reproduces what this job does.
       - name: Mutate what the pull request changed
         if: github.event_name == 'pull_request'
         working-directory: rust
         run: |
           diff="$RUNNER_TEMP/mutants-pull-request.diff"
-          # --relative is what makes the paths relative to rust/ rather than to the repository root.
-          # cargo-mutants matches its own paths (`src/lib.rs`) against this diff, so a repo-root path
-          # (`rust/src/lib.rs`) matches nothing, and that is how this step used to select zero mutants
-          # and still exit 0. fetch-depth: 0 above is what makes the merge base available.
+          # --relative: cargo-mutants matches its own paths (`src/lib.rs`) against this diff, so a
+          # repo-root path matches nothing.
           git diff --relative "origin/${{ github.base_ref }}...HEAD" > "$diff"
           if [ ! -s "$diff" ]; then
             echo "origin/${{ github.base_ref }}...HEAD produced an empty diff, so this range could not be resolved; failing rather than reporting a pass" >&2
             exit 1
           fi
           echo "files the diff covers: $(grep -c '^diff --git ' "$diff")"
-          # The count is printed before the run because a diff that touches no mutated module
-          # legitimately filters to zero mutants: that is a pass, and it has to be visible as zero
-          # rather than read as a run that measured something.
           cargo mutants --in-diff "$diff" --list > "$RUNNER_TEMP/mutants.txt"
           echo "mutants selected by the diff: $(wc -l < "$RUNNER_TEMP/mutants.txt")"
           cargo mutants --in-diff "$diff"
-      # A full re-run of the crate, not a comparison with a recorded baseline: the baseline is the
-      # committed rust/.cargo/mutants.toml, which is what makes a survivor reported here a change in
-      # the crate rather than a change in the exclusions.
       - name: Mutate the whole crate
         if: github.event_name == 'schedule'
         working-directory: rust
@@ -115,8 +83,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      # The ratio is asserted, not recorded: shared runners are too noisy for absolute milliseconds,
-      # and the managed probe bench.sh runs afterwards needs the staged library beside its own output.
+      # Shared runners are too noisy for absolute milliseconds, so the ratio is what is asserted.
       - name: Stage the host RID's native library
         shell: bash
         run: scripts/build.sh
@@ -124,23 +91,18 @@ jobs:
         shell: bash
         run: scripts/bench.sh
 
-  # The lockfile is committed and does not change between releases, so an advisory published against it
-  # cannot be shown by a pull request: this job's weekly run is what re-checks it. A pull request that
-  # changes rust/ runs it too, where a changed lockfile or deny.toml is what it catches, which is why the
-  # check sits here rather than in ci.yml: it reads only the rust/ tree.
+  # An advisory against the lockfile shows up on the weekly run or on a rust/ pull request, not on the
+  # release path: the lockfile does not change between releases.
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # `cargo deny` is cargo running cargo-deny from PATH, so the toolchain this job uses is pinned
-      # here rather than taken from the runner image.
+      # cargo-deny comes from PATH, so the toolchain is pinned here rather than taken from the image.
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-deny
-      # The committed lockfile and the committed rust/deny.toml are the inputs: a new advisory, a
-      # license outside the allow-list or a banned crate fails here.
       - name: cargo deny
         working-directory: rust
         run: cargo deny check advisories licenses bans

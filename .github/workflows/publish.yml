@@ -1,28 +1,12 @@
-# Publishes a package that release.yml built for a tag. The trigger is manual and the package is chosen
-# by naming its release, because publishing cannot be undone: NuGet refuses a version it already has, so
-# the decision to publish is one a person makes in a run they start.
-#
-# The bytes come from the GitHub Release asset rather than from the release run's artifacts. An artifact
-# expires, 90 days at most, while a release asset does not, and a release can be published long after it
-# was built. What ties those bytes to that tag's sources is the attestation release.yml wrote for them,
-# and verifying it is what makes publishing without a rebuild sound: a rebuild here would produce a file
-# no attestation covers. Re-running the `Category=Package` tests here would check less than the release
-# run did, because they read the RIDs staged under the package project and this job stages none, so the
-# release is where the package content was checked.
-#
-# Nothing here is a stored API key. The job exchanges a GitHub OIDC token for a short-lived key that
-# nuget.org issues against a trusted publishing policy naming this repository, this workflow file and the
-# `nuget` environment, which is what `id-token: write` below is for. The key lives one hour, so the
-# exchange is the step immediately before the push, and NUGET_USER is the only credential-shaped value
-# left: a nuget.org profile name, which cannot publish anything by itself.
+# Publishes a release.yml release to NuGet, by hand, because publishing cannot be undone.
 name: publish
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The release tag to publish, e.g. v1.2.3'
-        required: true
+        description: 'The release to publish, e.g. v1.2.3 or 1.2.3. Empty publishes the most recent'
+        required: false
         type: string
       dry_run:
         description: 'Check the release and its package, then stop without pushing to NuGet'
@@ -37,46 +21,54 @@ jobs:
   publish:
     name: publish
     runs-on: ubuntu-latest
-    # The second gate: the run is started by a person, and this environment adds the required reviewer a
-    # repository setting defines and gives the trusted publishing policy a name to match on, so a run of
-    # this workflow from somewhere else cannot obtain a key.
+    # The required reviewer is a repository setting on this environment, and this name is also what the
+    # trusted publishing policy matches on.
     environment: nuget
     permissions:
       contents: read
-      # The OIDC token the NuGet login step below exchanges for a short-lived API key.
       id-token: write
     steps:
+      # Before the checkout, which needs the resolved tag as its ref. Drafts are skipped; a pre-release is
+      # what an empty input is for.
+      - name: Resolve the tag to publish
+        id: tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$INPUT_TAG"
+          [ -n "$tag" ] || tag="$(gh release list --limit 1 --exclude-drafts --json tagName --jq '.[0].tagName // ""')"
+          [ -n "$tag" ] || { echo "no release to publish: pass a tag or create a release first" >&2; exit 1; }
+          # A release ref is v<version>; the caller may type the version alone.
+          tag="v${tag#[vV]}"
+          echo "the release to publish is $tag"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The released tag, so the <Version> read below is the one that was released rather than the
-          # one on whichever branch this workflow file was started from.
-          ref: ${{ inputs.tag }}
+          ref: ${{ steps.tag.outputs.tag }}
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      # The tag has to name the version the sources at that tag carry. The release's guard checked the
-      # same thing before building, and this is what makes the asset's file name the one the publish
-      # script expects to find in artifacts/.
+      # What makes the asset's file name the one the script expects in artifacts/.
       - name: Check the version the tag names
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: scripts/version.sh --check --tag "$RELEASE_TAG"
       - name: Download the released package
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: gh release download "$RELEASE_TAG" --pattern '*.nupkg' --dir artifacts
-      # Not rebuilt and not re-checked here: the attestation records which workflow, which ref and which
-      # sources produced these bytes, so verifying it is what proves the file just downloaded is the file
-      # that release built. The signer is pinned to release.yml, because an attestation any other workflow
-      # in this repository wrote would be a claim about a different build.
+      # Verifying the attestation is what proves the downloaded file is the one that release built.
       - name: Verify the package was built by the release workflow
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           for package in artifacts/*.nupkg; do
             gh attestation verify "$package" \
@@ -84,30 +76,30 @@ jobs:
               --signer-workflow "$GH_REPO/.github/workflows/release.yml" \
               --source-ref "refs/tags/$RELEASE_TAG"
           done
-      # Runs on a dry run too: the exchange is what proves the policy on nuget.org matches this repository,
-      # this workflow file and this environment, and a key that is never used simply expires.
+      # Runs on a dry run too: the exchange is what proves the policy matches, and an unused key expires.
       - name: Log in to nuget.org for a short-lived API key
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           # The nuget.org profile that owns the package, not an email address.
           user: ${{ secrets.NUGET_USER }}
-      # --push-only publishes the file already in artifacts/ and packs nothing, so the bytes that reach
-      # the feed are the ones the step above verified. It also refuses a tag that does not name the
-      # version the sources carry, which is the last check before an upload nothing can undo.
       - name: Publish to NuGet
         if: ${{ inputs.dry_run != true }}
         shell: bash
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: scripts/release.sh --push-only
       - name: Report what the dry run verified
         if: ${{ inputs.dry_run == true }}
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           {
-            echo '### Dry run: nothing was pushed'
+            echo "### Dry run: nothing was pushed"
+            echo
+            echo "Release: \`$RELEASE_TAG\`"
             echo
             echo 'The package below was downloaded, its attestation verified and a short-lived key'
             echo 'obtained from nuget.org; nothing was pushed.'

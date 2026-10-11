@@ -1,0 +1,100 @@
+# Called by ci.yml on a pull request and a main push, and by release.yml on a tag.
+name: _ci
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    permissions:
+      contents: read
+      checks: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Dependabot cannot move this pin: the ref is a branch tip, not a release.
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+        with:
+          # test.sh checks with rustfmt and clippy; the minimal profile carries neither.
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-nextest@0.9.148
+      # No dotnet-version: the SDK is the one global.json names, here and in every other workflow.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - name: Check the version the sources carry
+        shell: bash
+        run: scripts/version.sh --check
+      - name: Stage the host RID's native library
+        shell: bash
+        run: scripts/build.sh
+      - name: Run the Rust and C# suites
+        shell: bash
+        run: scripts/test.sh --report
+      - name: Upload the test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: artifacts/test-results/**/*.xml
+          if-no-files-found: warn
+      - name: Publish the test report
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
+        with:
+          # `java-junit` is the parser for the format, not for a producer: both reporters below write it.
+          # A fork's read-only token cannot create a check run.
+          name: test report (${{ matrix.os }})
+          path: artifacts/test-results/rust/*.xml,artifacts/test-results/dotnet/*.xml
+          reporter: java-junit
+
+  # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
+  Aot_Publish_Extracts_A_Page:
+    name: Aot_Publish_Extracts_A_Page (${{ matrix.rid }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+            binary: RustTrafilatura.AotConsumer.exe
+          - rid: linux-x64
+            os: ubuntu-latest
+            binary: RustTrafilatura.AotConsumer
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      # The Linux image ships neither clang nor the zlib headers the AOT linker needs.
+      - name: Install the Native AOT toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Stage the host RID's native library
+        shell: bash
+        run: scripts/build.sh
+      # IL2026 and IL3050 become errors here, so a reflection path cannot slip into the package unnoticed.
+      - name: Publish the consumer as Native AOT
+        shell: bash
+        run: |
+          dotnet publish dotnet/tests/RustTrafilatura.AotConsumer/RustTrafilatura.AotConsumer.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            -p:PublishAot=true \
+            '-p:WarningsAsErrors=IL2026%3BIL3050' \
+            -o artifacts/aot/${{ matrix.rid }}
+      - name: Run the published consumer
+        shell: bash
+        run: |
+          binary="artifacts/aot/${{ matrix.rid }}/${{ matrix.binary }}"
+          [ -x "$binary" ] || { echo "no published binary at $binary" >&2; exit 1; }
+          text="$("$binary")" || { echo "the published consumer exited non-zero" >&2; exit 1; }
+          [ -n "$text" ] || { echo "the published consumer printed no extracted text" >&2; exit 1; }
+          echo "$text"
