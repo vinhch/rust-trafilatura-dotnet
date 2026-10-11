@@ -430,6 +430,11 @@ target/
 # containing / is anchored at the repository root, which would miss the nested path.
 **/runtimes/*/native/
 
+# The benchmark page corpus, fetched by scripts/corpus.{ps1,sh} from a pinned commit of
+# markusmobius/content-extractor-benchmark: 151 MB of third-party pages that this repository
+# redistributes none of.
+/dotnet/benchmarks/corpus/
+
 # Local scratch notes and drafts; never committed or packaged.
 /.work/
 

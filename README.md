@@ -309,6 +309,7 @@ Prerequisites, with the minimum version of each:
 | Rust toolchain | 1.98.1 | everything under `rust/` |
 | `cargo-nextest` | 0.9.148 | `test.sh` |
 | `cargo-mutants` | latest | the mutation runs in `quality.yml` |
+| git | any | `corpus.sh`, which fetches the benchmark pages once |
 | clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer |
 
 ```console
@@ -338,6 +339,14 @@ folder or the cached entry cleared, because NuGet resolves by version.
 `bench.sh` compares one `rt_extract` call against a direct call into the `rust-trafilatura` core, and fails
 when the ratio exceeds its budget; it is a ratio, not a throughput figure. The allocation and speed analysis
 is in [`docs/research/binding-performance.md`](docs/research/binding-performance.md).
+
+`dotnet/benchmarks/RustTrafilatura.Benchmarks` is the BenchmarkDotNet project for the managed side:
+the three single-page entry points over pages spread across the corpus's size range, plus two
+whole-corpus benchmarks, each case reporting its time and the managed bytes it allocates.
+`bash scripts/corpus.sh` fetches the pages it reads, the pinned commit of
+`content-extractor-benchmark`, into the gitignored `dotnet/benchmarks/corpus/`, and then
+`dotnet run --project dotnet/benchmarks/RustTrafilatura.Benchmarks -c Release -- --job short`
+runs it against the staged native library. A run takes minutes, so `test.sh` and CI leave it out.
 
 `dotnet/tests/RustTrafilatura.AotConsumer` is not in `dotnet/RustTrafilatura.sln`: it is published and run,
 never tested and never packed.

@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- The nearest Directory.Build.props wins over dotnet/Directory.Build.props, so this file imports it
+       and then overrides the two settings the benchmark projects differ on. The import is also what
+       keeps the staged native library landing beside a benchmark: BenchmarkDotNet writes its generated
+       project under this directory, and that project loads the library the same way the tests do. -->
+  <Import Project="../Directory.Build.props" />
+
+  <PropertyGroup>
+    <!-- One asset: BenchmarkDotNet generates and rebuilds a project per run, and two assets would double
+         that for a number nothing compares across runtimes. The generated project inherits this file,
+         which is where the override has to live: a property set in the benchmark project itself never
+         reaches it, and the net8.0 half of the pair cannot reference a net10.0 assembly. -->
+    <TargetFrameworks></TargetFrameworks>
+    <!-- The trim and AOT analyzers describe what a publishing consumer gets, and BenchmarkDotNet
+         reflects over the benchmark types at run time, so the claim would be false here. -->
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+</Project>
