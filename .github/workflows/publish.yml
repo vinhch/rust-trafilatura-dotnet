@@ -52,8 +52,6 @@ jobs:
           # one on whichever branch this workflow file was started from.
           ref: ${{ inputs.tag }}
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
       # The tag has to name the version the sources at that tag carry. The release's guard checked the
       # same thing before building, and this is what makes the asset's file name the one the publish
       # script expects to find in artifacts/.

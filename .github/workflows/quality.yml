@@ -115,8 +115,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
       # The ratio is asserted, not recorded: shared runners are too noisy for absolute milliseconds,
       # and the managed probe bench.sh runs afterwards needs the staged library beside its own output.
       - name: Stage the host RID's native library

@@ -43,9 +43,10 @@ jobs:
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-nextest@0.9.148
+      # No dotnet-version here or in any other workflow: the SDK is the one global.json names, which the
+      # action reads from the repository root, so the runner resolves what a local build resolves and
+      # there is one place to change it.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
       # The crate version, the lockfile entry and the package version are one number in three files, and
       # this is the only check on a push or a pull request that compares them. Files only, so it runs
       # before anything is staged.
@@ -111,8 +112,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
       # Native AOT links the final binary with the platform toolchain, and the Linux image ships
       # neither clang nor the zlib headers the linker needs.
       - name: Install the Native AOT toolchain
