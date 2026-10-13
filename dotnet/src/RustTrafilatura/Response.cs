@@ -53,6 +53,8 @@ internal static class Response
                 continue;
             }
 
+            // Each branch reads its own value, because a name can only be compared while the reader is
+            // still on it: read first, and ValueTextEquals matches the value's bytes against member names.
             if (reader.ValueTextEquals("contentText"u8))
             {
                 reader.Read();
@@ -136,6 +138,7 @@ internal static class Response
                 continue;
             }
 
+            // The value is read inside each branch, as in Read.
             if (reader.ValueTextEquals("title"u8))
             {
                 reader.Read();
