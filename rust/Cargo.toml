@@ -31,3 +31,6 @@ test-hooks = []
 
 [profile.release]
 lto = "thin"
+# The cdylib crosses to .NET through the C ABI by ordinal, so the symbol table carries nothing a
+# consumer needs; stripping it drops ~1.5-2 MB per RID.
+strip = true
