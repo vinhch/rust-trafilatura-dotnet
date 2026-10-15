@@ -10,6 +10,13 @@
     <RepositoryUrl>https://github.com/vinhch/rust-trafilatura-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>trafilatura;html;extraction;text-extraction;readability;native</PackageTags>
+    <!-- Symbols and source: the PDB is embedded in the assembly rather than shipped as a separate
+         snupkg (the managed surface is one thin marshalling layer, so a symbol package adds pipeline
+         for nothing a consumer steps into), and SourceLink records the commit in the nuspec and the
+         source URLs a debugger follows. ContinuousIntegrationBuild is set by scripts/release.*, not
+         here: a local pack keeps relative source paths, while a release pack is byte-reproducible
+         from its commit. -->
+    <DebugType>embedded</DebugType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- The documentation file ships deliberately without a complete surface: every public member
          outside the wire-contract data carriers carries its own doc comment, and a carrier's members
@@ -48,6 +55,10 @@
     <!-- The interop layer stays internal: the ABI is an implementation detail, and only the test
          assembly reaches it, for the request shapes the public API cannot produce. -->
     <InternalsVisibleTo Include="RustTrafilatura.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.402" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

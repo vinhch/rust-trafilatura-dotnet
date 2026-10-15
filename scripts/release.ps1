@@ -204,7 +204,7 @@ if ($Missing.Count -gt 0) { Write-Host "$ScriptName`: omitted   $($Missing -join
 # overwrites in place, so the path it is about to write is removed first.
 if (Test-Path -PathType Leaf $Package) { Remove-Item -LiteralPath $Package -Force }
 
-dotnet pack $ProjectPath -c Release -o $ArtifactsDir @RuntimeArguments
+dotnet pack $ProjectPath -c Release -o $ArtifactsDir -p:ContinuousIntegrationBuild=true @RuntimeArguments
 if ($LASTEXITCODE -ne 0) { Fail "dotnet pack failed with exit code $LASTEXITCODE" }
 if (-not (Test-Path -PathType Leaf $Package)) { Fail "dotnet pack reported success but wrote no package: $Package" }
 

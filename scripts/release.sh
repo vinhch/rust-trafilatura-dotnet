@@ -203,7 +203,7 @@ echo "$script_name: packed    $staged"
 rm -f "$package"
 
 # shellcheck disable=SC2086 # pack_arguments is a list of flags built above, each without whitespace.
-if ! dotnet pack "$project_path" -c Release -o "$artifacts_dir" $pack_arguments; then
+if ! dotnet pack "$project_path" -c Release -o "$artifacts_dir" -p:ContinuousIntegrationBuild=true $pack_arguments; then
   fail "dotnet pack failed"
 fi
 [ -f "$package" ] || fail "dotnet pack reported success but wrote no package: $package"
