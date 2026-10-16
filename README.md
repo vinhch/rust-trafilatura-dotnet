@@ -288,10 +288,24 @@ catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorK
 }
 ```
 
-The pool those workers run on is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16, read
-once per process), and a call without a budget takes the same one-shot path as before, so the option
-costs nothing until it is set. In `ExtractMany` the budget applies to each page's own call: a batch
-of N pages at degree of parallelism D can take about N/D times the budget in total.
+The pool those workers run on is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` in the process
+environment (default 16). The value is read once, at the first budgeted call, so it has to be in
+place before that call: set it in the host — a container's environment block, a systemd unit,
+`launchSettings` — or before the first extraction in code.
+
+```csharp
+Environment.SetEnvironmentVariable("RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS", "32");
+```
+
+A positive integer is the cap; an absent, blank, zero or unparsable value keeps the default. The cap
+counts every in-flight budgeted call — a worker holds its slot from its call's start, not from its
+deadline — and each one carries its own payload copy, its working heap and a 16 MiB stack, so the cap
+is the worst-case memory bound of the budget path; raise it only with that budget in mind. A call
+without a budget takes the same one-shot path as before, so the option costs nothing until it is set.
+In `ExtractMany` the budget applies to each page's own call and every page holds a slot while it
+runs, so a batch whose parallelism exceeds the cap has its extra pages fail with `WorkerCapExceeded`
+right away: keep `maxDegreeOfParallelism` at or below the cap. A batch of N pages at degree of
+parallelism D can take about N/D times the budget in total.
 
 ## Supported Platforms
 
