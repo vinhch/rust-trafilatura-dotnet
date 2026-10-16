@@ -153,6 +153,8 @@ Note: a member the request did not name is null; one it named that the page has 
 | `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
 | `DuplicateBody` | `Deduplicate` is set and the content repeats | |
+| `TimeBudgetExceeded` | the call's `TimeBudgetMs` deadline expired | `budgetMs` |
+| `WorkerCapExceeded` | the budget path's detached-worker pool is full | `limit` |
 | `InvalidUrl` | `Url` is not an absolute `http`/`https` URL | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
@@ -259,6 +261,37 @@ HTML costs.
 ```csharp
 var options = new ExtractionOptions { ResponseFields = ["contentText", "metadata"] };
 ```
+
+### A wall-clock budget
+
+`TimeBudgetMs` bounds the wait, not the work: a call with a budget returns by the deadline plus
+scheduler slack with a `TimeBudgetExceeded` failure, while the extraction finishes on a detached
+worker afterwards. That is the shape for untrusted pages, where a pathological document must not pin
+its caller, and the two kinds stay separate because they call for different responses — the budget
+expired means this page was slow, the pool is full means the process is saturated.
+
+```csharp
+try
+{
+    var result = Extractor.ExtractFromBytes(page, new ExtractionOptions { TimeBudgetMs = 500 });
+}
+catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorKind.TimeBudgetExceeded)
+{
+    // The page outlasted its budget. The worker keeps running to completion in the background,
+    // so a retry re-enters a process that is still paying for this page.
+    return;
+}
+catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorKind.WorkerCapExceeded)
+{
+    // Every detached-worker slot is taken: the right response is backoff, not another page.
+    return;
+}
+```
+
+The pool those workers run on is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16, read
+once per process), and a call without a budget takes the same one-shot path as before, so the option
+costs nothing until it is set. In `ExtractMany` the budget applies to each page's own call: a batch
+of N pages at degree of parallelism D can take about N/D times the budget in total.
 
 ## Supported Platforms
 
