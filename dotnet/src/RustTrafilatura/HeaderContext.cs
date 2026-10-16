@@ -116,6 +116,8 @@ internal sealed class RequestHeader
 
     public List<string>? ResponseFields { get; init; }
 
+    public long? TimeBudgetMs { get; init; }
+
     public ExtractionOptions? Options { get; init; }
 }
 

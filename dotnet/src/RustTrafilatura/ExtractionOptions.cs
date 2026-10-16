@@ -116,6 +116,17 @@ public sealed class ExtractionOptions
     [JsonIgnore]
     public List<string>? ResponseFields { get; set; }
 
+    /// <summary>
+    /// The wall-clock budget for the whole call, in milliseconds, or null for none. A call with a
+    /// budget returns by the deadline plus scheduler slack with a <see cref="TrafilaturaErrorKind.TimeBudgetExceeded"/>
+    /// failure; the underlying extraction finishes on a detached worker afterwards. Valid values are
+    /// 1..=4294967296, and 0, negative and out-of-range values are rejected by the native side as
+    /// <see cref="TrafilaturaErrorKind.InvalidRequest"/>. This is a header key rather than an option,
+    /// which is why it is not serialized here.
+    /// </summary>
+    [JsonIgnore]
+    public long? TimeBudgetMs { get; set; }
+
     /// <summary>The language to expect, or null for no expectation.</summary>
     public string? TargetLanguage { get; set; }
 

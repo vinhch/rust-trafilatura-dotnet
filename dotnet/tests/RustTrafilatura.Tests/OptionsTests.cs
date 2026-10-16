@@ -315,4 +315,56 @@ public sealed class OptionsTests
         using var document = JsonDocument.Parse(response);
         Assert.Equal("InvalidRequest", document.RootElement.GetProperty("error").GetProperty("kind").GetString());
     }
+
+    /// <summary>
+    /// `timeBudgetMs` is a header key, not an option: it bounds the whole call the native side runs,
+    /// not one of the core's extraction knobs, so it travels beside `responseFields` and never inside
+    /// `options`, where the native side would reject it as an unknown key.
+    /// </summary>
+    [Fact]
+    public void TimeBudget_Is_A_Header_Key_Not_An_Option()
+    {
+        var header = Request.HeaderJson(new ExtractionOptions { TimeBudgetMs = 5000 });
+
+        Assert.Equal(5000, header.GetProperty("timeBudgetMs").GetInt64());
+        Assert.False(header.GetProperty("options").TryGetProperty("timeBudgetMs", out _));
+    }
+
+    /// <summary>An unset budget is no budget: the key is absent rather than null or zero.</summary>
+    [Fact]
+    public void TimeBudget_Absent_When_Null()
+    {
+        var fromNullOptions = Request.HeaderJson(null);
+        var fromOptionsWithoutBudget = Request.HeaderJson(new ExtractionOptions());
+
+        Assert.False(fromNullOptions.TryGetProperty("timeBudgetMs", out _));
+        Assert.False(fromOptionsWithoutBudget.TryGetProperty("timeBudgetMs", out _));
+    }
+
+    /// <summary>
+    /// Zero is not a budget ("return immediately" is not a deadline the native side can honour), so
+    /// the native side rejects it as an `InvalidRequest` rather than the caller finding out at the
+    /// deadline.
+    /// </summary>
+    [Fact]
+    public void TimeBudget_Zero_Is_Rejected_By_The_Native_Side()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(
+            () => Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { TimeBudgetMs = 0 }));
+
+        Assert.Equal(TrafilaturaErrorKind.InvalidRequest, exception.Kind);
+    }
+
+    /// <summary>
+    /// The ceiling is 2^32 ms: past it the native side rejects the request as `InvalidRequest`,
+    /// because the deadline arithmetic would overflow otherwise.
+    /// </summary>
+    [Fact]
+    public void TimeBudget_Out_Of_Range_Is_Rejected()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(
+            () => Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { TimeBudgetMs = 4294967297 }));
+
+        Assert.Equal(TrafilaturaErrorKind.InvalidRequest, exception.Kind);
+    }
 }
