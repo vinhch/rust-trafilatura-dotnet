@@ -101,23 +101,32 @@ static BUDGETED_WORKER_HOLD_MS: AtomicUsize = AtomicUsize::new(0);
 
 /// Extracts from a raw payload and returns the response JSON.
 ///
-/// Return codes: `0` success, `1` extraction error (an `InvalidUrl` header or a core error), `2`
-/// invalid request, `3` a caught panic. Code `2` has two cases: a null `out`, `out_len` or `out_cap`
-/// writes nothing, while a rejected request writes an `InvalidRequest` envelope. Every code that
-/// writes a buffer (`0`, `1`, `3`, and `2` when the request was rejected) hands the caller a UTF-8
-/// JSON buffer of `*out_len` bytes that the caller owns and releases with [`rt_free`].
+/// Return codes: `0` success, `1` extraction error (an `InvalidUrl` header, a core error, a
+/// `TimeBudgetExceeded` deadline or a `WorkerCapExceeded` pool), `2` invalid request, `3` a caught
+/// panic. Code `2` has two cases: a null `out`, `out_len` or `out_cap` writes nothing, while a
+/// rejected request writes an `InvalidRequest` envelope. Every code that writes a buffer (`0`,
+/// `1`, `3`, and `2` when the request was rejected) hands the caller a UTF-8 JSON buffer of
+/// `*out_len` bytes that the caller owns and releases with [`rt_free`].
 ///
-/// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `inputEncoding`, `options`,
-/// `responseFields`) and `payload` is raw HTML or gzip bytes, never base64. A null `payload` with
-/// `payload_len == 0` is empty input and reaches the core.
+/// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `inputEncoding`, `timeBudgetMs`,
+/// `options`, `responseFields`) and `payload` is raw HTML or gzip bytes, never base64. A null
+/// `payload` with `payload_len == 0` is empty input and reaches the core.
 ///
-/// Both buffers are checked before either is read, and each check can reject the request on its own:
-/// a null pointer beside a non-zero length, a header above 1 MiB, a payload above 64 MiB, or a
-/// header the contract rejects. A buffer exactly at its cap is accepted, and the caps are therefore
-/// enforced before the header is parsed and before anything is allocated in proportion to the
-/// input. `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES` override the
-/// caps; each is read once, so a value set after the first call has no effect, and `0` disables the
-/// cap it names.
+/// `timeBudgetMs`, when set to 1..=2^32, bounds this call: it returns by the deadline plus
+/// scheduler slack with the `TimeBudgetExceeded` error, while the extraction finishes on a
+/// detached worker that keeps running to completion and frees everything it allocated. The pool of
+/// those workers is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16, read once); a
+/// call that finds it full returns `WorkerCapExceeded` without copying the payload or starting a
+/// thread. Without `timeBudgetMs` the call runs the extraction to completion on a scoped thread,
+/// as before.
+///
+/// Both buffers are checked before either is read, and each check can reject the request on its
+/// own: a null pointer beside a non-zero length, a header above 1 MiB, a payload above 64 MiB, or
+/// a header the contract rejects. A buffer exactly at its cap is accepted, and the caps are
+/// therefore enforced before the header is parsed and before anything is allocated in proportion
+/// to the input. `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES`
+/// override the caps; each is read once, so a value set after the first call has no effect, and
+/// `0` disables the cap it names.
 ///
 /// # Safety
 ///

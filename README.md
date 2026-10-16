@@ -73,6 +73,7 @@ native library applies its own default rather than a value this package invented
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText`, `contentHtml`, `commentsHtml` and `metadata` to return. An unnamed field is never computed, so omitting HTML skips serializing it |
 | `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
 | `InputEncoding` | null | An `encoding_rs` label to decode the payload with, instead of detecting the charset from it |
+| `TimeBudgetMs` | null | The wall-clock budget for the whole call, in milliseconds. A call with a budget returns by the deadline plus scheduler slack with a `TimeBudgetExceeded` failure, while the underlying extraction finishes on a detached worker afterwards. Valid values are 1..=4294967296; 0, negative and out-of-range values are rejected as `InvalidRequest`. The pool of budgeted workers is bounded by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16), and a call that finds it full fails with `WorkerCapExceeded` |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `EnableFallback` | false | Whether to compare against the bundled readability-lxml candidate as well. The default is the FAST path: native recall and baseline recovery only |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
@@ -294,7 +295,13 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   parsing; `MaxTreeSize` bounds the extracted tree, not the input, and is not a denial-of-service
   bound.
 - **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and
-  no cancellation token. `ExtractMany` is the only concurrency the package offers.
+  no cancellation token. `ExtractMany` is the only concurrency the package offers. The bounded
+  alternative to cancelling is `TimeBudgetMs`: a call with a budget returns by the deadline plus
+  scheduler slack with a `TimeBudgetExceeded` failure, while the extraction finishes on a detached
+  worker afterwards — the core has no cancellation checkpoints, so the budget bounds the caller's
+  wait, not the worker's work. Those workers are capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`
+  (default 16); a call that finds the pool full fails with `WorkerCapExceeded`, which a caller
+  answers with backoff rather than a per-page timeout.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 
