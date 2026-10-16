@@ -19,14 +19,15 @@
 pub mod contract;
 pub mod engine;
 
-use crate::contract::{Request, RequestError, SCHEMA_VERSION};
+use crate::contract::{Request, RequestError, ResponseField, SCHEMA_VERSION};
 use crate::engine::{ErrorEnvelope, Response};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
-#[cfg(feature = "test-hooks")]
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 /// The ABI version. Independent of both the crate version and [`SCHEMA_VERSION`].
 const ABI_VERSION: u32 = 1;
@@ -79,6 +80,24 @@ static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// Output buffers handed to the caller and not yet released, for the `test-hooks` allocation tests.
 #[cfg(feature = "test-hooks")]
 static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Environment variable holding the runaway-worker cap; each budgeted call runs on a detached
+/// worker, and this bounds how many may exist at once.
+const WORKER_CAP_ENV: &str = "RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS";
+
+/// Runaway-worker cap used when the environment variable is absent or unusable.
+const DEFAULT_MAX_RUNAWAY_WORKERS: usize = 16;
+
+/// The runaway-worker cap, read once so it cannot change between calls.
+static MAX_RUNAWAY_WORKERS: OnceLock<usize> = OnceLock::new();
+
+/// Live detached workers for budgeted calls; reserved before a worker spawns and released in the
+/// worker's drop guard, so a panic or a spawn failure also frees its slot.
+static LIVE_RUNAWAY_WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+/// The `test-hooks` hold for budgeted workers, in milliseconds; see [`rt_hold_budgeted_worker_for_test`].
+#[cfg(feature = "test-hooks")]
+static BUDGETED_WORKER_HOLD_MS: AtomicUsize = AtomicUsize::new(0);
 
 /// Extracts from a raw payload and returns the response JSON.
 ///
@@ -206,6 +225,18 @@ pub extern "C" fn rt_live_buffers_for_test() -> usize {
     LIVE_BUFFERS.load(Ordering::SeqCst)
 }
 
+/// Holds every budgeted worker for `ms` milliseconds before its extraction, so a test can cross a
+/// call's deadline deterministically.
+///
+/// The hold is process-global, so tests that set it must not run concurrently with each other. The
+/// symbol exists only in a build with the `test-hooks` feature, which must be absent from every
+/// release artifact.
+#[cfg(feature = "test-hooks")]
+#[no_mangle]
+pub extern "C" fn rt_hold_budgeted_worker_for_test(ms: usize) {
+    BUDGETED_WORKER_HOLD_MS.store(ms, Ordering::SeqCst);
+}
+
 /// The `rt_version` document.
 ///
 /// The crate version comes from the manifest, so the reported value cannot drift from the package
@@ -256,13 +287,19 @@ fn run_extract(
         Err(error) => return request_error(error),
     };
     // SAFETY: as above, and the payload buffer is only read once the header was accepted.
-    let response = on_worker_thread(&request, unsafe { bytes(payload, payload_len) });
-    let code = if response.error.is_some() {
-        CODE_EXTRACTION_ERROR
-    } else {
-        CODE_OK
-    };
-    (code, encode(&response))
+    let payload = unsafe { bytes(payload, payload_len) };
+    match request.header.time_budget_ms {
+        Some(budget) => budgeted_extract(&request, payload, budget),
+        None => {
+            let response = on_worker_thread(&request, payload);
+            let code = if response.error.is_some() {
+                CODE_EXTRACTION_ERROR
+            } else {
+                CODE_OK
+            };
+            (code, encode(&response))
+        }
+    }
 }
 
 /// Rejects the inputs the ABI refuses, before either buffer is read.
@@ -343,6 +380,147 @@ fn on_worker_thread(request: &Request, payload: &[u8]) -> Response {
             Err(cause) => resume_unwind(cause),
         }
     })
+}
+
+/// What a budgeted worker sent back: a finished response, or the payload of a panic it caught.
+/// The response is boxed to keep the two variants near one another in size.
+enum WorkerOutcome {
+    Done(Box<Response>),
+    Panicked(Box<dyn std::any::Any + Send>),
+}
+
+/// Runs the extraction on a detached worker and waits for it only until the deadline.
+///
+/// The order is fixed: reserve a runaway-worker slot (a full pool rejects with
+/// `WorkerCapExceeded` and copies nothing), copy the payload to an owned buffer, clone the
+/// request, then spawn. The worker owns everything it reads, because a detached thread cannot
+/// borrow the caller's memory the way [`on_worker_thread`] does. The clock starts here, so the
+/// payload copy is inside the budget.
+///
+/// On deadline the caller returns the `TimeBudgetExceeded` envelope and the worker keeps running
+/// to completion in the background, freeing everything it allocated. The core has no
+/// cancellation checkpoints, so the budget bounds the caller's wait, not the worker's work.
+fn budgeted_extract(request: &Request, payload: &[u8], budget_ms: u64) -> (i32, Vec<u8>) {
+    let fields = request.fields.clone();
+    let cap = worker_cap();
+    if LIVE_RUNAWAY_WORKERS
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, |live| {
+            (live < cap).then_some(live + 1)
+        })
+        .is_err()
+    {
+        let live = LIVE_RUNAWAY_WORKERS.load(Ordering::SeqCst);
+        let message = format!(
+            "{live} detached workers are already live at the {cap}-worker cap in {WORKER_CAP_ENV}"
+        );
+        return response_pair(
+            engine::failure_envelope(
+                "WorkerCapExceeded",
+                message,
+                Some(json!({ "limit": cap })),
+                &fields,
+            ),
+            CODE_EXTRACTION_ERROR,
+        );
+    }
+
+    // The clock starts here: the payload copy below is inside the budget.
+    let deadline = Instant::now() + Duration::from_millis(budget_ms);
+    let owned_payload = payload.to_vec();
+    let owned_request = request.clone();
+    let (sender, receiver) = mpsc::channel();
+    let spawn = std::thread::Builder::new()
+        .stack_size(stack_bytes())
+        .spawn(move || {
+            // The slot is held from the reserve above until this guard drops: the worker
+            // finishing, panicking or failing to send all release it.
+            let _guard = RunawayWorkerGuard;
+            let _sender = sender;
+            #[cfg(feature = "test-hooks")]
+            {
+                let hold = BUDGETED_WORKER_HOLD_MS.load(Ordering::SeqCst);
+                if hold > 0 {
+                    std::thread::sleep(Duration::from_millis(hold as u64));
+                }
+            }
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                engine::build(&owned_request, &owned_payload)
+            }))
+            .map(|response| WorkerOutcome::Done(Box::new(response)))
+            .unwrap_or_else(WorkerOutcome::Panicked);
+            // A send failure means the caller already timed out and dropped the receiver; the
+            // outcome is dropped with the sender here.
+            let _ = _sender.send(outcome);
+        });
+    if spawn.is_err() {
+        // The reservation above is this thread's to undo: the closure that owns the guard never
+        // started, so the slot is released here rather than by a guard.
+        LIVE_RUNAWAY_WORKERS.fetch_sub(1, Ordering::SeqCst);
+        resume_unwind(Box::new("the budgeted extraction thread must start"));
+    }
+    await_budgeted(receiver, deadline, budget_ms, &fields)
+}
+
+/// Waits for the budgeted worker until the deadline, then reports the worker's verdict or the
+/// budget expiry.
+fn await_budgeted(
+    receiver: mpsc::Receiver<WorkerOutcome>,
+    deadline: Instant,
+    budget_ms: u64,
+    fields: &[ResponseField],
+) -> (i32, Vec<u8>) {
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(WorkerOutcome::Done(response)) => {
+            let code = if response.error.is_some() {
+                CODE_EXTRACTION_ERROR
+            } else {
+                CODE_OK
+            };
+            (code, encode(&response))
+        }
+        Ok(WorkerOutcome::Panicked(cause)) => resume_unwind(cause),
+        Err(mpsc::RecvTimeoutError::Timeout) => response_pair(
+            engine::failure_envelope(
+                "TimeBudgetExceeded",
+                format!("extraction exceeded the {budget_ms} ms time budget"),
+                Some(json!({ "budgetMs": budget_ms })),
+                fields,
+            ),
+            CODE_EXTRACTION_ERROR,
+        ),
+        // A disconnected channel means the worker died without a verdict, which is a panic
+        // reaching the caller, never a budget expiry.
+        Err(mpsc::RecvTimeoutError::Disconnected) => resume_unwind(Box::new(
+            "the budgeted worker disconnected without a verdict",
+        )),
+    }
+}
+
+/// Releases the runaway-worker slot when the worker finishes, whether it completed, panicked or
+/// failed to send.
+struct RunawayWorkerGuard;
+
+impl Drop for RunawayWorkerGuard {
+    fn drop(&mut self) {
+        LIVE_RUNAWAY_WORKERS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// The runaway-worker cap: `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` when it parses to a positive
+/// number, otherwise [`DEFAULT_MAX_RUNAWAY_WORKERS`]. Like [`stack_bytes`], read once.
+fn worker_cap() -> usize {
+    *MAX_RUNAWAY_WORKERS.get_or_init(|| {
+        std::env::var(WORKER_CAP_ENV)
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|cap| *cap > 0)
+            .unwrap_or(DEFAULT_MAX_RUNAWAY_WORKERS)
+    })
+}
+
+/// Pairs a failure envelope with its return code.
+fn response_pair(response: Response, code: i32) -> (i32, Vec<u8>) {
+    (code, encode(&response))
 }
 
 /// The extraction stack size: `RUSTTRAFILATURA_STACK_BYTES` when it parses to a positive number,
@@ -553,5 +731,102 @@ mod tests {
             0
         )
         .is_ok());
+    }
+
+    #[test]
+    fn budget_expiry_returns_code_1_time_budget_exceeded() {
+        let (sender, receiver) = mpsc::channel();
+        let start = Instant::now();
+        let (code, bytes) = guarded(|| {
+            await_budgeted(
+                receiver,
+                start + Duration::from_millis(50),
+                50,
+                &[ResponseField::ContentText],
+            )
+        });
+        drop(sender);
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "the wait must honour the deadline within scheduler slack"
+        );
+        assert_eq!(code, CODE_EXTRACTION_ERROR);
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["error"]["kind"], "TimeBudgetExceeded");
+        assert_eq!(value["error"]["context"]["budgetMs"], 50);
+        assert_eq!(value["contentText"], "");
+        assert!(value["metadata"].is_null());
+    }
+
+    #[test]
+    fn worker_panic_before_deadline_resumes_into_code_3() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(WorkerOutcome::Panicked(Box::new(
+                "the worker panicked for the test",
+            )))
+            .unwrap();
+        drop(sender);
+        let (code, bytes) = guarded(|| {
+            await_budgeted(
+                receiver,
+                Instant::now() + Duration::from_secs(60),
+                60_000,
+                &[ResponseField::ContentText],
+            )
+        });
+        assert_eq!(code, CODE_PANIC_CAUGHT);
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["error"]["kind"], "Panic");
+        assert_eq!(
+            value["error"]["context"]["message"],
+            "the worker panicked for the test"
+        );
+    }
+
+    #[test]
+    fn worker_result_before_deadline_returns_code_0() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(WorkerOutcome::Done(Box::new(Response {
+                schema_version: SCHEMA_VERSION,
+                content_text: Some("extracted".to_owned()),
+                comments_text: None,
+                content_html: None,
+                comments_html: None,
+                metadata: None,
+                error: None,
+            })))
+            .unwrap();
+        drop(sender);
+        let (code, bytes) = guarded(|| {
+            await_budgeted(
+                receiver,
+                Instant::now() + Duration::from_secs(60),
+                60_000,
+                &[ResponseField::ContentText],
+            )
+        });
+        assert_eq!(code, CODE_OK);
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["contentText"], "extracted");
+        assert!(value["error"].is_null());
+    }
+
+    #[test]
+    fn disconnected_channel_is_a_panic_not_a_timeout() {
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let (code, bytes) = guarded(|| {
+            await_budgeted(
+                receiver,
+                Instant::now() + Duration::from_millis(50),
+                50,
+                &[ResponseField::ContentText],
+            )
+        });
+        assert_eq!(code, CODE_PANIC_CAUGHT);
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["error"]["kind"], "Panic");
     }
 }

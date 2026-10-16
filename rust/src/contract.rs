@@ -52,7 +52,7 @@ const DEFAULT_RESPONSE_FIELDS: [ResponseField; 3] = [
 ///
 /// `url` and `inputEncoding` live here rather than in `options`; every other option is a field
 /// of [`OptionsJson`]. Unknown keys are rejected at every level.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Header {
     pub schema_version: Option<u32>,
@@ -68,7 +68,7 @@ pub struct Header {
 /// Every field is optional: an omitted key means "core default", which `engine` applies when it
 /// maps this onto the core `Options`/`Config`. The core's own enums carry no serde derives, so
 /// the wire spellings are declared here.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct OptionsJson {
     pub target_language: Option<String>,
@@ -107,7 +107,7 @@ pub enum HtmlDateModeJson {
 }
 
 /// The `options.config` sub-object; each omitted key takes the core default.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ConfigJson {
     pub cache_size: Option<i64>,
@@ -120,7 +120,7 @@ pub struct ConfigJson {
 }
 
 /// A validated request header plus the fields to return.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Request {
     pub header: Header,
     pub fields: Vec<ResponseField>,
