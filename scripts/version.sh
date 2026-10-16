@@ -121,6 +121,13 @@ set_version() {
   [ "$previous" != "$new_version" ] ||
     fail "$manifest already carries $new_version"
 
+  # Before any write: a missing cargo found afterwards would leave the manifest and the lockfile
+  # disagreeing in the tree.
+  command -v cargo >/dev/null 2>&1 ||
+    fail "cargo is not installed or not on PATH, and --set needs it to rewrite $lockfile. Nothing was changed. Install Rust (https://rustup.rs) and retry."
+  cargo --version >/dev/null 2>&1 ||
+    fail "cargo is on PATH but 'cargo --version' failed (broken rustup toolchain?). Nothing was changed."
+
   # sed -i differs between GNU and BSD, and these scripts run on macOS too, so each rewrite goes
   # through a file beside its target. Both are written and checked before either is moved into place,
   # so a pattern that matches nothing cannot leave the pair disagreeing in the tree: it fails here,
@@ -140,9 +147,6 @@ set_version() {
     fail "rewriting $manifest did not produce $new_version"
   [ "$(project_version)" = "$new_version" ] ||
     fail "rewriting $project did not produce $new_version"
-
-  command -v cargo >/dev/null 2>&1 ||
-    fail "$manifest carries $new_version now but cargo is not on PATH, so $lockfile still records $previous. Run a cargo command in rust/ without --locked, then re-run --check."
 
   # cargo writes the crate's own lockfile entry as part of a resolution rather than as a command of
   # its own, and --locked afterwards is what proves the entry it wrote matches the manifest.

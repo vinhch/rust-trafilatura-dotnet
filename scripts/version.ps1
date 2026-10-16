@@ -141,6 +141,16 @@ function Set-Version {
     $previous = Get-ManifestVersion
     if ($previous -eq $NewVersion) { Fail "$Manifest already carries $NewVersion" }
 
+    # Before any write: a missing cargo found afterwards would leave the manifest and the lockfile
+    # disagreeing in the tree.
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        Fail "cargo is not installed or not on PATH, and --set needs it to rewrite $Lockfile. Nothing was changed. Install Rust (https://rustup.rs) and retry."
+    }
+    & cargo --version | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Fail "cargo is on PATH but 'cargo --version' failed (broken rustup toolchain?). Nothing was changed."
+    }
+
     # BOM-less UTF-8, and the newlines come from the text that was read: both files are LF in the
     # repository and stay that way, whichever shell rewrote them. Both rewrites are built and checked
     # before either is written, so a pattern that matches nothing cannot leave the pair disagreeing in
@@ -160,10 +170,6 @@ function Set-Version {
 
     if ((Get-ManifestVersion) -ne $NewVersion) { Fail "rewriting $Manifest did not produce $NewVersion" }
     if ((Get-ProjectVersion) -ne $NewVersion) { Fail "rewriting $Project did not produce $NewVersion" }
-
-    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Fail "$Manifest carries $NewVersion now but cargo is not on PATH, so $Lockfile still records $previous. Run a cargo command in rust/ without --locked, then re-run --check."
-    }
 
     # cargo writes the crate's own lockfile entry as part of a resolution rather than as a command of
     # its own, and --locked afterwards is what proves the entry it wrote matches the manifest.
