@@ -72,6 +72,42 @@ pub fn build(request: &Request, payload: &[u8]) -> Response {
     )
 }
 
+/// Assembles a failure the caller reports instead of running the core: a budget expiry or a
+/// runaway-worker cap rejection. It follows the same failure rule as [`assemble`]'s `Err` arm —
+/// every requested content field is an empty string, `metadata` stays `None` — so every
+/// failure envelope keeps one shape.
+pub fn failure_envelope(
+    kind: &str,
+    message: String,
+    context: Option<serde_json::Value>,
+    fields: &[ResponseField],
+) -> Response {
+    let mut response = Response {
+        schema_version: SCHEMA_VERSION,
+        content_text: None,
+        comments_text: None,
+        content_html: None,
+        comments_html: None,
+        metadata: None,
+        error: None,
+    };
+    for field in fields {
+        match field {
+            ResponseField::ContentText => response.content_text = Some(String::new()),
+            ResponseField::CommentsText => response.comments_text = Some(String::new()),
+            ResponseField::ContentHtml => response.content_html = Some(String::new()),
+            ResponseField::CommentsHtml => response.comments_html = Some(String::new()),
+            ResponseField::Metadata => {}
+        }
+    }
+    response.error = Some(ErrorEnvelope {
+        kind: kind.to_owned(),
+        message,
+        context,
+    });
+    response
+}
+
 /// Extracts from HTML the caller already decoded, on the same pipeline as [`build`].
 ///
 /// It encodes to UTF-8 and delegates, as the design requires of `ExtractFromHtml` (section 8):
@@ -650,6 +686,56 @@ mod tests {
                 assert!(object.contains_key(key), "{case} must carry {key}: {value}");
             }
         }
+    }
+
+    #[test]
+    fn failure_envelope_fills_only_the_requested_fields() {
+        let fields = [ResponseField::ContentText];
+        let context = json!({"budgetMs": 50});
+        let response = failure_envelope(
+            "TimeBudgetExceeded",
+            "extraction exceeded the 50 ms time budget".to_owned(),
+            Some(context.clone()),
+            &fields,
+        );
+        assert_eq!(response.content_text.as_deref(), Some(""));
+        assert!(response.comments_text.is_none());
+        assert!(response.content_html.is_none() && response.comments_html.is_none());
+        assert!(response.metadata.is_none());
+        let error = response.error.unwrap();
+        assert_eq!(error.kind, "TimeBudgetExceeded");
+        assert_eq!(error.message, "extraction exceeded the 50 ms time budget");
+        assert_eq!(error.context, Some(context));
+    }
+
+    #[test]
+    fn failure_envelope_with_every_field_requested_matches_the_engine_failure_shape() {
+        let fields = [
+            ResponseField::ContentText,
+            ResponseField::CommentsText,
+            ResponseField::ContentHtml,
+            ResponseField::CommentsHtml,
+            ResponseField::Metadata,
+        ];
+        let failure = build(&parse_request(EVERYTHING).unwrap(), &[]);
+        let envelope = failure_envelope(
+            "WorkerCapExceeded",
+            "message".to_owned(),
+            Some(json!({"limit": 16})),
+            &fields,
+        );
+        // The requested-fields part of the failure shape must match a real build() failure
+        // field for field: requested content fields are empty strings, metadata stays null.
+        assert_eq!(envelope.schema_version, failure.schema_version);
+        assert_eq!(envelope.content_text, failure.content_text);
+        assert_eq!(envelope.comments_text, failure.comments_text);
+        assert_eq!(envelope.content_html, failure.content_html);
+        assert_eq!(envelope.comments_html, failure.comments_html);
+        assert_eq!(
+            serde_json::to_value(&envelope.metadata).unwrap(),
+            serde_json::to_value(&failure.metadata).unwrap()
+        );
+        assert_eq!(envelope.error.as_ref().unwrap().kind, "WorkerCapExceeded");
     }
 
     #[test]
