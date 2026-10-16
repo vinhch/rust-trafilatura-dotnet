@@ -21,6 +21,12 @@ public enum TrafilaturaErrorKind
     InvalidRequest,
     Panic,
 
+    /// <summary>The call's wall-clock time budget expired; the underlying extraction finishes on a detached worker afterwards.</summary>
+    TimeBudgetExceeded,
+
+    /// <summary>The detached-worker pool the budget path runs on is full — a process-level condition, not a page-level one.</summary>
+    WorkerCapExceeded,
+
     /// <summary>A kind the native library reported and this client version does not recognise.</summary>
     Unknown,
 }
