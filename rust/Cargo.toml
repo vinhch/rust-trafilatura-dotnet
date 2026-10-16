@@ -1,6 +1,6 @@
 [package]
 name = "rust-trafilatura-ffi"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.98.1"
 # This repository's own source is MIT. The crate links the released core crate, which is
