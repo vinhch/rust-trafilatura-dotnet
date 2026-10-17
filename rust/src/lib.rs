@@ -5,8 +5,8 @@
 //! - `contract`: request header and response JSON types, plus validation.
 //! - `engine`: core invocation and response assembly.
 //!
-//! The exported symbols (`rt_extract`, `rt_free`, `rt_version` and the `test-hooks`-gated test
-//! hooks) and the library's `unsafe` code belong in this file: pointer dereference, the `Vec`
+//! The exported symbols (`rt_extract`, `rt_free`, `rt_version`, the worker-cap exports and the
+//! `test-hooks`-gated test hooks) and the library's `unsafe` code belong in this file: pointer dereference, the `Vec`
 //! reconstruction in `rt_free` and the `catch_unwind` boundary. A caller opens an `unsafe` block at
 //! the call site, because an `unsafe extern "C"` function cannot be called from safe code. Each
 //! export validates its out-parameters and the size of its inputs before reading or writing
@@ -37,6 +37,10 @@ const CODE_OK: i32 = 0;
 const CODE_EXTRACTION_ERROR: i32 = 1;
 const CODE_INVALID_REQUEST: i32 = 2;
 const CODE_PANIC_CAUGHT: i32 = 3;
+
+/// Return code of [`rt_set_worker_cap`]: the cap was already fixed, by an earlier set or by
+/// the environment read at the first budgeted call.
+const CODE_WORKER_CAP_ALREADY_FIXED: i32 = 1;
 
 /// Environment variable holding the extraction stack size in bytes.
 const STACK_BYTES_ENV: &str = "RUSTTRAFILATURA_STACK_BYTES";
@@ -115,9 +119,9 @@ static BUDGETED_WORKER_HOLD_MS: AtomicUsize = AtomicUsize::new(0);
 /// `timeBudgetMs`, when set to 1..=2^32, bounds this call: it returns by the deadline plus
 /// scheduler slack with the `TimeBudgetExceeded` error, while the extraction finishes on a
 /// detached worker that keeps running to completion and frees everything it allocated. The pool of
-/// those workers is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16, read once); a
-/// call that finds it full returns `WorkerCapExceeded` without copying the payload or starting a
-/// thread. Without `timeBudgetMs` the call runs the extraction to completion on a scoped thread,
+/// those workers is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16, read once) or by
+/// [`rt_set_worker_cap`], whichever fixes the cap first; a call that finds it full returns
+/// `WorkerCapExceeded` without copying the payload or starting a thread. Without `timeBudgetMs` the call runs the extraction to completion on a scoped thread,
 /// as before.
 ///
 /// Both buffers are checked before either is read, and each check can reject the request on its
@@ -197,6 +201,47 @@ pub unsafe extern "C" fn rt_version(
     let (code, bytes) = guarded(|| (CODE_OK, encode(&VersionJson::current())));
     write_out(out, out_len, out_cap, bytes);
     code
+}
+
+/// Sets the runaway-worker cap for later budgeted calls.
+///
+/// Return codes: `0` applied, `1` already fixed, `2` invalid. The cap is read once, so this and
+/// the first budgeted call are two writers of one value: whoever fixes it first wins, and the
+/// loser is told so by `1` rather than left running on a value it never set. A `0` is invalid,
+/// matching the environment variable's positive-integer rule, and fixes nothing. The cap stays
+/// for the process lifetime; there is no reset.
+#[no_mangle]
+pub extern "C" fn rt_set_worker_cap(cap: u32) -> i32 {
+    if cap == 0 {
+        return CODE_INVALID_REQUEST;
+    }
+    match MAX_RUNAWAY_WORKERS.set(cap as usize) {
+        Ok(()) => CODE_OK,
+        Err(_) => CODE_WORKER_CAP_ALREADY_FIXED,
+    }
+}
+
+/// Reports the runaway-worker cap without fixing it.
+///
+/// The value is the one [`rt_set_worker_cap`] or the first budgeted call would fix:
+/// `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` when it parses to a positive number, otherwise the
+/// default 16. A value above `u32::MAX` saturates to it rather than wrapping.
+#[no_mangle]
+pub extern "C" fn rt_worker_cap() -> u32 {
+    MAX_RUNAWAY_WORKERS
+        .get()
+        .copied()
+        .unwrap_or_else(worker_cap_from_env)
+        .min(u32::MAX as usize) as u32
+}
+
+/// Reports how many detached budgeted workers are live right now.
+///
+/// The count is advisory: a worker reserves its slot before it spawns and releases it when it
+/// finishes, so the value can change as soon as it is read.
+#[no_mangle]
+pub extern "C" fn rt_live_runaway_workers() -> u32 {
+    LIVE_RUNAWAY_WORKERS.load(Ordering::SeqCst) as u32
 }
 
 /// Panics on purpose, so the `test-hooks` suite can prove the panic boundary end to end.
@@ -518,13 +563,17 @@ impl Drop for RunawayWorkerGuard {
 /// The runaway-worker cap: `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` when it parses to a positive
 /// number, otherwise [`DEFAULT_MAX_RUNAWAY_WORKERS`]. Like [`stack_bytes`], read once.
 fn worker_cap() -> usize {
-    *MAX_RUNAWAY_WORKERS.get_or_init(|| {
-        std::env::var(WORKER_CAP_ENV)
-            .ok()
-            .and_then(|value| value.trim().parse::<usize>().ok())
-            .filter(|cap| *cap > 0)
-            .unwrap_or(DEFAULT_MAX_RUNAWAY_WORKERS)
-    })
+    *MAX_RUNAWAY_WORKERS.get_or_init(worker_cap_from_env)
+}
+
+/// The cap the environment names, or the default: the value that applies when nothing has
+/// fixed the cap yet.
+fn worker_cap_from_env() -> usize {
+    std::env::var(WORKER_CAP_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|cap| *cap > 0)
+        .unwrap_or(DEFAULT_MAX_RUNAWAY_WORKERS)
 }
 
 /// Pairs a failure envelope with its return code.
