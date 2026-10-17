@@ -33,6 +33,65 @@ public static class Extractor
     public static NativeLibraryVersion LibraryVersion => LibraryContract.Version;
 
     /// <summary>
+    /// Sets the runaway-worker cap for every later budgeted extraction, once per process: it
+    /// returns <see cref="WorkerCapOutcome.Applied"/> when this call fixed the cap, and
+    /// <see cref="WorkerCapOutcome.AlreadyFixed"/> when an earlier call of it or the first
+    /// budgeted extraction had already fixed it, in which case nothing changes and the process
+    /// keeps the value that was fixed.
+    /// </summary>
+    /// <remarks>
+    /// The cap is read once, native side, and this and the environment variable
+    /// `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` are two writers of one value: whoever fixes it
+    /// first wins. Calling this at host start, before the first budgeted extraction, is the way
+    /// to make the cap certain; on Unix, setting the variable through
+    /// `Environment.SetEnvironmentVariable` never reaches the native side, so this call is also
+    /// the only in-code way there. The native side applies the same rule on its own: a cap of 0
+    /// or below is invalid and throws before any native call is made.
+    /// </remarks>
+    /// <param name="cap">The maximum number of detached workers; 1 or more.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cap"/> is 0 or below.</exception>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">
+    /// The library that loaded is a stale build that predates this API and does not export the
+    /// worker-cap symbols.
+    /// </exception>
+    public static WorkerCapOutcome ConfigureWorkerCap(int cap)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(cap, 0);
+
+        return Interop.SetWorkerCap(cap) == 0
+            ? WorkerCapOutcome.Applied
+            : WorkerCapOutcome.AlreadyFixed;
+    }
+
+    /// <summary>
+    /// The runaway-worker cap that applies right now, read without fixing it: before any
+    /// <see cref="ConfigureWorkerCap"/> call and before the first budgeted extraction this is
+    /// the value that would apply — the environment variable's when it names a positive
+    /// number, otherwise the default 16 — and reading it never locks the process to that
+    /// value.
+    /// </summary>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">
+    /// The library that loaded is a stale build that predates this API and does not export the
+    /// worker-cap symbols.
+    /// </exception>
+    public static int WorkerCap => Interop.WorkerCap();
+
+    /// <summary>
+    /// How many detached budgeted workers are live right now. The value is advisory: a worker
+    /// reserves its slot before it starts and releases it when it finishes, so the count can
+    /// change as soon as it is read — it exists for saturation logging behind
+    /// <see cref="TrafilaturaErrorKind.WorkerCapExceeded"/>, not for control flow.
+    /// </summary>
+    /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
+    /// <exception cref="EntryPointNotFoundException">
+    /// The library that loaded is a stale build that predates this API and does not export the
+    /// worker-cap symbols.
+    /// </exception>
+    public static int LiveRunawayWorkers => Interop.LiveRunawayWorkers();
+
+    /// <summary>
     /// Extracts from a page the caller already holds as bytes. Gzip detection, charset detection,
     /// decoding, normalization and parsing all happen inside the native library, which is given the
     /// caller's own memory: the page is never copied or decoded on the managed side, and a

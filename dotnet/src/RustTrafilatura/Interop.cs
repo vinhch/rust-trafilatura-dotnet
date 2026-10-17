@@ -131,6 +131,74 @@ internal static partial class Interop
         }
     }
 
+    /// <summary>
+    /// Sets the runaway-worker cap, mapping the ABI's loading failures exactly as
+    /// <see cref="Extract{TResult}"/> does so a stale or missing library is reported the same
+    /// way here as everywhere else. The caller owns the argument's validity: a non-positive cap
+    /// is rejected on the managed side before any native call.
+    /// </summary>
+    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
+    internal static int SetWorkerCap(int cap)
+    {
+        try
+        {
+            return RtSetWorkerCap(cap);
+        }
+        catch (DllNotFoundException exception)
+        {
+            throw MissingLibrary(exception);
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw MissingSymbol(exception);
+        }
+    }
+
+    /// <summary>
+    /// Reports the runaway-worker cap without fixing it, with the same loading-failure mapping
+    /// as <see cref="SetWorkerCap"/>.
+    /// </summary>
+    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
+    internal static int WorkerCap()
+    {
+        try
+        {
+            return RtWorkerCap();
+        }
+        catch (DllNotFoundException exception)
+        {
+            throw MissingLibrary(exception);
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw MissingSymbol(exception);
+        }
+    }
+
+    /// <summary>
+    /// Reports how many detached budgeted workers are live right now, with the same
+    /// loading-failure mapping as <see cref="SetWorkerCap"/>.
+    /// </summary>
+    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
+    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
+    internal static int LiveRunawayWorkers()
+    {
+        try
+        {
+            return RtLiveRunawayWorkers();
+        }
+        catch (DllNotFoundException exception)
+        {
+            throw MissingLibrary(exception);
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw MissingSymbol(exception);
+        }
+    }
+
     /// <summary>Returns 0 ok, 1 extraction error, 2 invalid request, 3 a caught panic.</summary>
     [LibraryImport(LibraryName, EntryPoint = "rt_extract", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
