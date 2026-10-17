@@ -61,6 +61,9 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 | `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
 | `Extractor.ExtractMany(IReadOnlyList<byte[]> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | Extracts a batch under bounded parallelism |
 | `Extractor.ExtractMany(IReadOnlyList<ReadOnlyMemory<byte>> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | The same batch over memory pages |
+| `Extractor.ConfigureWorkerCap(int cap)` | Sets the runaway-worker cap once per process; returns `WorkerCapOutcome.Applied` or `AlreadyFixed`, and throws for a cap of 0 or below |
+| `Extractor.WorkerCap` | The cap that applies right now, read without fixing it |
+| `Extractor.LiveRunawayWorkers` | An advisory snapshot of how many detached budgeted workers are live |
 | `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
 
 ### Options
@@ -73,7 +76,7 @@ native library applies its own default rather than a value this package invented
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText`, `contentHtml`, `commentsHtml` and `metadata` to return. An unnamed field is never computed, so omitting HTML skips serializing it |
 | `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
 | `InputEncoding` | null | An `encoding_rs` label to decode the payload with, instead of detecting the charset from it |
-| `TimeBudgetMs` | null | The wall-clock budget for the whole call, in milliseconds. A call with a budget returns by the deadline plus scheduler slack with a `TimeBudgetExceeded` failure, while the underlying extraction finishes on a detached worker afterwards. Valid values are 1..=4294967296; 0, negative and out-of-range values are rejected as `InvalidRequest`. The pool of budgeted workers is bounded by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16), and a call that finds it full fails with `WorkerCapExceeded` |
+| `TimeBudgetMs` | null | The wall-clock budget for the whole call, in milliseconds. A call with a budget returns by the deadline plus scheduler slack with a `TimeBudgetExceeded` failure, while the underlying extraction finishes on a detached worker afterwards. Valid values are 1..=4294967296; 0, negative and out-of-range values are rejected as `InvalidRequest`. The pool of budgeted workers is capped by `Extractor.ConfigureWorkerCap` or `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16), and a call that finds it full fails with `WorkerCapExceeded` |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `EnableFallback` | false | Whether to compare against the bundled readability-lxml candidate as well. The default is the FAST path: native recall and baseline recovery only |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
@@ -287,6 +290,8 @@ catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorK
     return;
 }
 ```
+
+### Bounding the worker pool
 
 The pool those workers run on is capped, once per process, by whichever of two setters fixes the
 cap first: `Extractor.ConfigureWorkerCap(cap)` in code, or the `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`
