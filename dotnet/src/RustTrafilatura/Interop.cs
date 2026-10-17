@@ -26,7 +26,7 @@ internal delegate TResult ResponseReader<TResult>(int code, ReadOnlySpan<byte> r
 /// with. Responses are length-delimited UTF-8 rather than NUL-terminated, so a response may contain
 /// any byte and the caller's payload never becomes a string. The class is internal, and the test
 /// assembly is its only other reader through `InternalsVisibleTo`: a raw round trip means
-/// <see cref="Extract{TResult}"/>, and the three imports stay reachable for the ABI's own edge cases.
+/// <see cref="Extract{TResult}"/>, and the raw imports stay reachable for the ABI's own edge cases.
 /// </remarks>
 internal static partial class Interop
 {
@@ -153,6 +153,21 @@ internal static partial class Interop
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static unsafe partial int RtVersion(nint* outPointer, nint* outLength, nint* outCapacity);
 
+    /// <summary>Sets the runaway-worker cap: 0 applied, 1 already fixed, 2 invalid.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "rt_set_worker_cap", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int RtSetWorkerCap(int cap);
+
+    /// <summary>Reports the runaway-worker cap without fixing it.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "rt_worker_cap", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int RtWorkerCap();
+
+    /// <summary>Reports how many detached budgeted workers are live right now.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "rt_live_runaway_workers", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int RtLiveRunawayWorkers();
+
     /// <summary>
     /// The library the host could not open. A source checkout stages it with the build scripts while a
     /// package delivers it as a RID asset, so the message names the paths and says which of the two is
@@ -172,7 +187,7 @@ internal static partial class Interop
     /// </summary>
     private static EntryPointNotFoundException MissingSymbol(EntryPointNotFoundException inner) =>
         new(
-            $"The native library {LibraryFileName} loaded but does not export the rt_extract, rt_free and rt_version symbols, so it is not a build of this ABI - typically a stale or placeholder artifact. Rebuild it with scripts/build.ps1 (or scripts/build.sh).{Environment.NewLine}"
+            $"The native library {LibraryFileName} loaded but does not export the rt_extract, rt_free, rt_version, rt_set_worker_cap, rt_worker_cap and rt_live_runaway_workers symbols, so it is not a build of this ABI - typically a stale or placeholder artifact. Rebuild it with scripts/build.ps1 (or scripts/build.sh).{Environment.NewLine}"
             + $"Looked at:{Environment.NewLine}{DescribeCandidates()}",
             inner);
 
