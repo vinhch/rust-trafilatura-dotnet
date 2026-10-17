@@ -288,19 +288,31 @@ catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorK
 }
 ```
 
-The pool those workers run on is capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` in the process
-environment (default 16). The value is read once, at the first budgeted call, so it has to be in
-place before that call: set it in the host — a container's environment block, a systemd unit,
-`launchSettings` — or before the first extraction in code.
+The pool those workers run on is capped, once per process, by whichever of two setters fixes the
+cap first: `Extractor.ConfigureWorkerCap(cap)` in code, or the `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`
+variable in the process environment (default 16). Calling the configure at host start, before the
+first budgeted call, is the way to make the cap certain:
 
 ```csharp
-Environment.SetEnvironmentVariable("RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS", "32");
+Extractor.ConfigureWorkerCap(32);  // WorkerCapOutcome.Applied
 ```
 
-A positive integer is the cap; an absent, blank, zero or unparsable value keeps the default. The cap
-counts every in-flight budgeted call — a worker holds its slot from its call's start, not from its
-deadline — and each one carries its own payload copy, its working heap and a 16 MiB stack, so the cap
-is the worst-case memory bound of the budget path; raise it only with that budget in mind. A call
+The outcome says which writer won: `Applied` when this call fixed the cap, `AlreadyFixed` when an
+earlier configure or the first budgeted call had already fixed it, in which case nothing changes and
+the process keeps the earlier value — a late configure cannot silently run on the default. On Unix,
+setting the variable through `Environment.SetEnvironmentVariable` updates a managed copy that the
+native side never sees, so the in-code route there is the configure, not the variable; on the
+Windows path the variable is read at the first budgeted call, so it too has to be in place before
+that call — a container's environment block, a systemd unit, `launchSettings`.
+
+For a positive integer the variable names the cap; an absent, blank, zero or unparsable value keeps
+the default. `Extractor.WorkerCap` reports the cap that applies right now without fixing it —
+before anything else it is the value that would apply, so a host may log its intent before
+configuring — and `Extractor.LiveRunawayWorkers` is an advisory snapshot of how many detached
+workers are live, for saturation logging behind a `WorkerCapExceeded` burst. The cap counts every
+in-flight budgeted call — a worker holds its slot from its call's start, not from its deadline —
+and each one carries its own payload copy, its working heap and a 16 MiB stack, so the cap is the
+worst-case memory bound of the budget path; raise it only with that budget in mind. A call
 without a budget takes the same one-shot path as before, so the option costs nothing until it is set.
 In `ExtractMany` the budget applies to each page's own call and every page holds a slot while it
 runs, so a batch whose parallelism exceeds the cap has its extra pages fail with `WorkerCapExceeded`
@@ -346,9 +358,10 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   alternative to cancelling is `TimeBudgetMs`: a call with a budget returns by the deadline plus
   scheduler slack with a `TimeBudgetExceeded` failure, while the extraction finishes on a detached
   worker afterwards — the core has no cancellation checkpoints, so the budget bounds the caller's
-  wait, not the worker's work. Those workers are capped by `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`
-  (default 16); a call that finds the pool full fails with `WorkerCapExceeded`, which a caller
-  answers with backoff rather than a per-page timeout.
+  wait, not the worker's work. Those workers are capped by `Extractor.ConfigureWorkerCap` or
+  `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`, whichever fixes the cap first (default 16, read once); a
+  call that finds the pool full fails with `WorkerCapExceeded`, which a caller answers with backoff
+  rather than a per-page timeout.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 
