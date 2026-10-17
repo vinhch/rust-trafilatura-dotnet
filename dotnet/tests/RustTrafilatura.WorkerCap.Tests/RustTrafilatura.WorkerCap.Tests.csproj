@@ -6,14 +6,7 @@
 
   <!-- xunit.v3 alone: it carries the Microsoft.Testing.Platform entry point and needs neither the
        VSTest SDK nor the Visual Studio adapter, which are the two packages a VSTest project adds.
-       The runner is opted in by global.json and the executable output set here: the shared
-       dotnet/Directory.Build.props gates both on the project name ending in ".Tests", which this
-       project's name does not, so it sets them for itself. -->
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
-  </PropertyGroup>
-
+       The runner is opted in by global.json and the executable output by dotnet/Directory.Build.props. -->
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>

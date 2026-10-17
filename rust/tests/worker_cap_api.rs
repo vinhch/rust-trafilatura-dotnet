@@ -52,9 +52,18 @@ fn set_read_and_live_counts_in_order() {
     // Zero is invalid and fixes nothing.
     assert_eq!(rt_set_worker_cap(0), 2);
 
-    // The set applies — proof the read above and the rejected zero fixed nothing — and the
-    // accessor reports the applied value.
-    assert_eq!(rt_set_worker_cap(2), 0);
+    // Concurrent sets racing for one unfixed cap: exactly one applies and the rest report
+    // already-fixed, never a torn state. Scoped threads keep the join before the assertions.
+    let results: Vec<i32> = std::thread::scope(|scope| {
+        let sets: Vec<_> = (0..8)
+            .map(|_| scope.spawn(|| rt_set_worker_cap(2)))
+            .collect();
+        sets.into_iter()
+            .map(|set| set.join().expect("a set ran"))
+            .collect()
+    });
+    assert_eq!(results.iter().filter(|&&code| code == 0).count(), 1);
+    assert_eq!(results.iter().filter(|&&code| code == 1).count(), 7);
     assert_eq!(rt_worker_cap(), 2);
 
     // The applied cap bounds workers. With a 300 ms hold and a 50 ms budget, two calls fill the

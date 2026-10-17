@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Xunit;
 
-namespace RustTrafilatura.WorkerCapTests;
+namespace RustTrafilatura.WorkerCap.Tests;
 
 /// <summary>
 /// The runaway-worker cap's process-wide lifecycle, in a test project of its own so the main
@@ -58,14 +58,18 @@ public sealed class WorkerCapOrderingTests
 
         Assert.Equal(16, Extractor.WorkerCap);
 
-        // The live count is advisory and read-only: it observes one budgeted call finish on a
-        // generous budget — a call that fixes nothing the cap has not fixed already — and drains
-        // back to zero once the worker is done. A failing extraction would have thrown, so
-        // reaching the drain assertion is itself the success of the call.
+        // The live count is advisory and read-only: one budgeted call runs on a generous budget
+        // — fixing nothing the cap has not fixed already — and the count drains back to zero
+        // once the worker releases its slot. The drain is polled, not read once: the worker
+        // sends its result before its guard releases the slot, so the call returning does not
+        // mean the count is zero yet. A failing extraction would have thrown, so reaching the
+        // drain assertion is itself the success of the call.
         var before = Extractor.LiveRunawayWorkers;
         var result = Extractor.ExtractFromBytes(Article(), new ExtractionOptions { TimeBudgetMs = 60_000 });
         Assert.NotNull(result.ContentText);
         Assert.True(before >= 0);
-        Assert.Equal(0, Extractor.LiveRunawayWorkers);
+        Assert.True(
+            SpinWait.SpinUntil(() => Extractor.LiveRunawayWorkers == 0, TimeSpan.FromSeconds(30)),
+            $"the live count never drained to zero, still {Extractor.LiveRunawayWorkers}");
     }
 }

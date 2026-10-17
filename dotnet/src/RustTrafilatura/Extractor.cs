@@ -45,8 +45,8 @@ public static class Extractor
     /// first wins. Calling this at host start, before the first budgeted extraction, is the way
     /// to make the cap certain; on Unix, setting the variable through
     /// `Environment.SetEnvironmentVariable` never reaches the native side, so this call is also
-    /// the only in-code way there. The native side applies the same rule on its own: a cap of 0
-    /// or below is invalid and throws before any native call is made.
+    /// the only in-code way there. A cap of 0 or below throws here, before any native call; the
+    /// native export rejects 0 on its own for callers that are not this binding.
     /// </remarks>
     /// <param name="cap">The maximum number of detached workers; 1 or more.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="cap"/> is 0 or below.</exception>
@@ -57,11 +57,17 @@ public static class Extractor
     /// </exception>
     public static WorkerCapOutcome ConfigureWorkerCap(int cap)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(cap, 0);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(cap);
 
-        return Interop.SetWorkerCap(cap) == 0
-            ? WorkerCapOutcome.Applied
-            : WorkerCapOutcome.AlreadyFixed;
+        // Code 2 cannot reach here (the guard above rejects 0), and a code this binding does
+        // not know is a mismatched build, reported rather than mistaken for already-fixed.
+        return Interop.SetWorkerCap(cap) switch
+        {
+            0 => WorkerCapOutcome.Applied,
+            1 => WorkerCapOutcome.AlreadyFixed,
+            _ => throw new InvalidOperationException(
+                $"The native library returned an unknown worker-cap code for cap {cap}."),
+        };
     }
 
     /// <summary>
