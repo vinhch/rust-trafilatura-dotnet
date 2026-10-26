@@ -22,7 +22,7 @@ jobs:
         with:
           # test.sh checks with rustfmt and clippy; the minimal profile carries neither.
           components: rustfmt, clippy
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-nextest@0.9.148
       # No dotnet-version: the SDK is the one global.json names, here and in every other workflow.
