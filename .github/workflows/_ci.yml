@@ -22,11 +22,11 @@ jobs:
         with:
           # test.sh checks with rustfmt and clippy; the minimal profile carries neither.
           components: rustfmt, clippy
-      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-nextest@0.9.148
       # No dotnet-version: the SDK is the one global.json names, here and in every other workflow.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       - name: Check the version the sources carry
         shell: bash
         run: scripts/version.sh --check
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       # The Linux image ships neither clang nor the zlib headers the AOT linker needs.
       - name: Install the Native AOT toolchain
         if: runner.os == 'Linux'
