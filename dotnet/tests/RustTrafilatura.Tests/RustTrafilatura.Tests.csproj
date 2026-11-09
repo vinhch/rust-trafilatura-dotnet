@@ -8,7 +8,7 @@
        VSTest SDK nor the Visual Studio adapter, which are the two packages a VSTest project adds.
        The runner is opted in by global.json and the executable output by dotnet/Directory.Build.props. -->
   <ItemGroup>
-    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
   </ItemGroup>
 
   <ItemGroup>
