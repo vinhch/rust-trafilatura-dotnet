@@ -89,7 +89,7 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 /// caller a UTF-8 JSON buffer of `*out_len` bytes that the caller owns and releases with
 /// [`rt_free`].
 ///
-/// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `inputEncoding`, `options`,
+/// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `options`,
 /// `responseFields`) and `payload` is raw HTML or gzip bytes, never base64. A null `payload` with
 /// `payload_len == 0` is empty input and reaches the core. The call runs the extraction to
 /// completion on a scoped thread.

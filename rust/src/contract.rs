@@ -46,14 +46,13 @@ const DEFAULT_RESPONSE_FIELDS: [ResponseField; 3] = [
 
 /// The request header, schema version 2.
 ///
-/// `url` and `inputEncoding` live here rather than in `options`; every other option is a field
+/// `url` lives here rather than in `options`; every other option is a field
 /// of [`OptionsJson`]. Unknown keys are rejected at every level.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Header {
     pub schema_version: Option<u32>,
     pub url: Option<String>,
-    pub input_encoding: Option<String>,
     pub options: Option<OptionsJson>,
     pub response_fields: Option<Vec<String>>,
 }
@@ -67,18 +66,15 @@ pub struct Header {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct OptionsJson {
     pub target_language: Option<String>,
-    pub enable_fallback: Option<bool>,
     pub focus: Option<FocusJson>,
     pub exclude_comments: Option<bool>,
     pub exclude_tables: Option<bool>,
     pub include_images: Option<bool>,
     pub include_links: Option<bool>,
     pub blacklisted_authors: Option<Vec<String>>,
-    pub deduplicate: Option<bool>,
     pub has_essential_metadata: Option<bool>,
     pub max_tree_size: Option<i64>,
     pub html_date_mode: Option<HtmlDateModeJson>,
-    pub prune_selector: Option<String>,
     pub config: Option<ConfigJson>,
 }
 
@@ -98,18 +94,13 @@ pub enum HtmlDateModeJson {
     Default,
     Fast,
     Extensive,
-    Disabled,
 }
 
 /// The `options.config` sub-object; each omitted key takes the core default.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ConfigJson {
-    pub cache_size: Option<i64>,
-    pub max_duplicate_count: Option<i64>,
-    pub min_duplicate_check_size: Option<i64>,
     pub min_extracted_size: Option<i64>,
-    pub min_extracted_comment_size: Option<i64>,
     pub min_output_size: Option<i64>,
     pub min_output_comment_size: Option<i64>,
 }
@@ -387,27 +378,19 @@ mod tests {
         let header = br#"{
             "schemaVersion": 2,
             "url": "https://example.org/article",
-            "inputEncoding": "windows-1252",
             "options": {
                 "targetLanguage": "en",
-                "enableFallback": true,
                 "focus": "favorRecall",
                 "excludeComments": true,
                 "excludeTables": true,
                 "includeImages": true,
                 "includeLinks": true,
                 "blacklistedAuthors": ["a", "b"],
-                "deduplicate": true,
                 "hasEssentialMetadata": true,
                 "maxTreeSize": 1050,
                 "htmlDateMode": "extensive",
-                "pruneSelector": "aside",
                 "config": {
-                    "cacheSize": 10,
-                    "maxDuplicateCount": 3,
-                    "minDuplicateCheckSize": 7,
                     "minExtractedSize": 300,
-                    "minExtractedCommentSize": 2,
                     "minOutputSize": 4,
                     "minOutputCommentSize": 5
                 }
@@ -415,13 +398,8 @@ mod tests {
         }"#;
         let request = parse_request(header).unwrap();
         assert_eq!(request.header.schema_version, Some(SCHEMA_VERSION));
-        assert_eq!(
-            request.header.input_encoding.as_deref(),
-            Some("windows-1252")
-        );
         let options = request.header.options.unwrap();
         assert_eq!(options.target_language.as_deref(), Some("en"));
-        assert_eq!(options.enable_fallback, Some(true));
         assert_eq!(options.focus, Some(FocusJson::FavorRecall));
         assert_eq!(options.exclude_comments, Some(true));
         assert_eq!(options.exclude_tables, Some(true));
@@ -431,27 +409,39 @@ mod tests {
             options.blacklisted_authors,
             Some(vec!["a".to_owned(), "b".to_owned()])
         );
-        assert_eq!(options.deduplicate, Some(true));
         assert_eq!(options.has_essential_metadata, Some(true));
         assert_eq!(options.max_tree_size, Some(1050));
         assert_eq!(options.html_date_mode, Some(HtmlDateModeJson::Extensive));
-        assert_eq!(options.prune_selector.as_deref(), Some("aside"));
         let config = options.config.unwrap();
-        assert_eq!(config.cache_size, Some(10));
-        assert_eq!(config.max_duplicate_count, Some(3));
-        assert_eq!(config.min_duplicate_check_size, Some(7));
         assert_eq!(config.min_extracted_size, Some(300));
-        assert_eq!(config.min_extracted_comment_size, Some(2));
         assert_eq!(config.min_output_size, Some(4));
         assert_eq!(config.min_output_comment_size, Some(5));
     }
 
     #[test]
-    fn input_encoding_is_rejected_inside_options() {
-        assert!(matches!(
-            parse_request(br#"{"options":{"inputEncoding":"windows-1252"}}"#),
-            Err(RequestError::InvalidRequest(reason)) if reason.contains("inputEncoding")
-        ));
+    fn removed_option_keys_are_unknown() {
+        for header in [
+            &br#"{"inputEncoding":"utf-8"}"#[..],
+            &br#"{"options":{"inputEncoding":"windows-1252"}}"#[..],
+            &br#"{"options":{"enableFallback":true}}"#[..],
+            &br#"{"options":{"deduplicate":true}}"#[..],
+            &br#"{"options":{"pruneSelector":"div"}}"#[..],
+            &br#"{"options":{"htmlDateMode":"disabled"}}"#[..],
+            &br#"{"options":{"config":{"cacheSize":1}}}"#[..],
+            &br#"{"options":{"config":{"maxDuplicateCount":1}}}"#[..],
+            &br#"{"options":{"config":{"minDuplicateCheckSize":1}}}"#[..],
+            &br#"{"options":{"config":{"minExtractedCommentSize":1}}}"#[..],
+        ] {
+            assert!(
+                matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+                "{} must be an InvalidRequest",
+                String::from_utf8_lossy(header)
+            );
+        }
+    }
+
+    #[test]
+    fn url_is_rejected_inside_options() {
         assert!(matches!(
             parse_request(br#"{"options":{"url":"https://example.org/a"}}"#),
             Err(RequestError::InvalidRequest(reason)) if reason.contains("url")
@@ -472,7 +462,7 @@ mod tests {
             );
         }
         assert_eq!(
-            parse_request(br#"{"options":{"focus":"balanced","htmlDateMode":"disabled"}}"#)
+            parse_request(br#"{"options":{"focus":"balanced","htmlDateMode":"fast"}}"#)
                 .unwrap()
                 .header
                 .options

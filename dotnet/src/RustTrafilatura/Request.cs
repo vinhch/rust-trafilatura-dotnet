@@ -9,8 +9,8 @@ namespace RustTrafilatura;
 internal static class Request
 {
     /// <summary>
-    /// Assembles the request header as the bytes that cross the ABI. `responseFields`, `url` and
-    /// `inputEncoding` belong at its top level while every core option belongs inside `options`, and a
+    /// Assembles the request header as the bytes that cross the ABI. `responseFields` and `url`
+    /// belong at its top level while every core option belongs inside `options`, and a
     /// member that was not set is left out so the native side applies its own default instead of a
     /// value this layer invented.
     /// </summary>
@@ -21,7 +21,6 @@ internal static class Request
             {
                 ResponseFields = options?.ResponseFields,
                 Url = options?.Url,
-                InputEncoding = options?.InputEncoding,
                 Options = options,
             },
             HeaderContext.Default.RequestHeader);

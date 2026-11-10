@@ -157,7 +157,6 @@ fn options_from(header: &Header) -> Options {
             .as_ref()
             .and_then(|options| options.config.as_ref())
             .map(config_from),
-        input_encoding: header.input_encoding.clone().unwrap_or_default(),
         original_url: header
             .url
             .as_deref()
@@ -170,9 +169,6 @@ fn options_from(header: &Header) -> Options {
     };
     if let Some(value) = &json.target_language {
         options.target_language.clone_from(value);
-    }
-    if let Some(value) = json.enable_fallback {
-        options.enable_fallback = value;
     }
     if let Some(value) = json.focus {
         options.focus = focus_from(value);
@@ -192,9 +188,6 @@ fn options_from(header: &Header) -> Options {
     if let Some(value) = &json.blacklisted_authors {
         options.blacklisted_authors.clone_from(value);
     }
-    if let Some(value) = json.deduplicate {
-        options.deduplicate = value;
-    }
     if let Some(value) = json.has_essential_metadata {
         options.has_essential_metadata = value;
     }
@@ -204,34 +197,23 @@ fn options_from(header: &Header) -> Options {
     if let Some(value) = json.html_date_mode {
         options.html_date_mode = html_date_mode_from(value);
     }
-    if let Some(value) = &json.prune_selector {
-        options.prune_selector.clone_from(value);
-    }
     options
 }
 
 /// Maps the `options.config` object onto a core [`Config`], each omitted key from
-/// [`Config::default`].
+/// [`Config::default`]. The duplicate-check and cache members are not on the wire and keep their
+/// defaults.
 fn config_from(json: &ConfigJson) -> Config {
     let default = Config::default();
     Config {
-        cache_size: json.cache_size.unwrap_or(default.cache_size),
-        max_duplicate_count: json
-            .max_duplicate_count
-            .unwrap_or(default.max_duplicate_count),
-        min_duplicate_check_size: json
-            .min_duplicate_check_size
-            .unwrap_or(default.min_duplicate_check_size),
         min_extracted_size: json
             .min_extracted_size
             .unwrap_or(default.min_extracted_size),
-        min_extracted_comment_size: json
-            .min_extracted_comment_size
-            .unwrap_or(default.min_extracted_comment_size),
         min_output_size: json.min_output_size.unwrap_or(default.min_output_size),
         min_output_comment_size: json
             .min_output_comment_size
             .unwrap_or(default.min_output_comment_size),
+        ..default
     }
 }
 
@@ -250,7 +232,6 @@ fn html_date_mode_from(mode: contract::HtmlDateModeJson) -> HtmlDateMode {
         contract::HtmlDateModeJson::Default => HtmlDateMode::Default,
         contract::HtmlDateModeJson::Fast => HtmlDateMode::Fast,
         contract::HtmlDateModeJson::Extensive => HtmlDateMode::Extensive,
-        contract::HtmlDateModeJson::Disabled => HtmlDateMode::Disabled,
     }
 }
 
@@ -398,23 +379,6 @@ mod tests {
         let text = response.content_text.expect("contentText was requested");
         assert!(text.contains("r\u{e9}sum\u{e9}"), "{text}");
         assert!(text.contains('\u{201c}'), "{text}");
-    }
-
-    #[test]
-    fn input_encoding_selects_the_decoder() {
-        let detected = build(&parse_request(TEXT_ONLY).unwrap(), FIXTURES[9].as_bytes());
-        let forced = build(
-            &parse_request(br#"{"responseFields":["contentText"],"inputEncoding":"windows-1252"}"#)
-                .unwrap(),
-            FIXTURES[9].as_bytes(),
-        );
-        let detected = detected.content_text.unwrap();
-        let forced = forced.content_text.unwrap();
-        assert!(detected.contains("approuv\u{e9}"), "{detected}");
-        assert!(
-            forced.contains("approuv\u{c3}\u{a9}"),
-            "the explicit encoding must win: {forced}"
-        );
     }
 
     #[test]
@@ -733,31 +697,23 @@ mod tests {
     }
 
     #[test]
-    fn wire_options_map_onto_every_core_field() {
+    fn options_from_keeps_fast_mode_and_no_dedup() {
         let request = parse_request(
             br#"{
                 "url": "https://example.org/article",
-                "inputEncoding": "windows-1252",
                 "options": {
                     "targetLanguage": "en",
-                    "enableFallback": true,
                     "focus": "favorRecall",
                     "excludeComments": true,
                     "excludeTables": true,
                     "includeImages": true,
                     "includeLinks": true,
-                    "blacklistedAuthors": ["a", "b"],
-                    "deduplicate": true,
+                    "blacklistedAuthors": ["a"],
                     "hasEssentialMetadata": true,
                     "maxTreeSize": 1050,
                     "htmlDateMode": "extensive",
-                    "pruneSelector": "aside",
                     "config": {
-                        "cacheSize": 10,
-                        "maxDuplicateCount": 3,
-                        "minDuplicateCheckSize": 7,
                         "minExtractedSize": 300,
-                        "minExtractedCommentSize": 2,
                         "minOutputSize": 4,
                         "minOutputCommentSize": 5
                     }
@@ -766,7 +722,50 @@ mod tests {
         )
         .unwrap();
         let options = options_from(&request.header);
-        assert_eq!(options.input_encoding, "windows-1252");
+        assert!(!options.enable_fallback);
+        assert!(!options.deduplicate);
+        assert!(options.input_encoding.is_empty());
+        assert!(options.prune_selector.is_empty());
+        let config = options.config.expect("config was set");
+        let default = Config::default();
+        assert_eq!(config.cache_size, default.cache_size);
+        assert_eq!(config.max_duplicate_count, default.max_duplicate_count);
+        assert_eq!(
+            config.min_duplicate_check_size,
+            default.min_duplicate_check_size
+        );
+        assert_eq!(
+            config.min_extracted_comment_size,
+            default.min_extracted_comment_size
+        );
+    }
+
+    #[test]
+    fn wire_options_map_onto_every_core_field() {
+        let request = parse_request(
+            br#"{
+                "url": "https://example.org/article",
+                "options": {
+                    "targetLanguage": "en",
+                    "focus": "favorRecall",
+                    "excludeComments": true,
+                    "excludeTables": true,
+                    "includeImages": true,
+                    "includeLinks": true,
+                    "blacklistedAuthors": ["a", "b"],
+                    "hasEssentialMetadata": true,
+                    "maxTreeSize": 1050,
+                    "htmlDateMode": "extensive",
+                    "config": {
+                        "minExtractedSize": 300,
+                        "minOutputSize": 4,
+                        "minOutputCommentSize": 5
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let options = options_from(&request.header);
         assert_eq!(
             options
                 .original_url
@@ -776,7 +775,6 @@ mod tests {
             Some("https://example.org/article")
         );
         assert_eq!(options.target_language, "en");
-        assert!(options.enable_fallback);
         assert_eq!(options.focus, ExtractionFocus::FavorRecall);
         assert!(options.exclude_comments);
         assert!(options.exclude_tables);
@@ -786,22 +784,17 @@ mod tests {
             options.blacklisted_authors,
             vec!["a".to_owned(), "b".to_owned()]
         );
-        assert!(options.deduplicate);
         assert!(options.has_essential_metadata);
         assert_eq!(options.max_tree_size, 1050);
         assert_eq!(options.html_date_mode, HtmlDateMode::Extensive);
-        assert_eq!(options.prune_selector, "aside");
         assert!(!options.enable_log);
         assert_eq!(
             options.config,
             Some(Config {
-                cache_size: 10,
-                max_duplicate_count: 3,
-                min_duplicate_check_size: 7,
                 min_extracted_size: 300,
-                min_extracted_comment_size: 2,
                 min_output_size: 4,
                 min_output_comment_size: 5,
+                ..Config::default()
             })
         );
     }
@@ -821,7 +814,6 @@ mod tests {
             ("default", HtmlDateMode::Default),
             ("fast", HtmlDateMode::Fast),
             ("extensive", HtmlDateMode::Extensive),
-            ("disabled", HtmlDateMode::Disabled),
         ] {
             let header = format!(r#"{{"options":{{"htmlDateMode":"{wire}"}}}}"#);
             let request = parse_request(header.as_bytes()).unwrap();

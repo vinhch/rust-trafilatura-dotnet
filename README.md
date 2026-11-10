@@ -69,21 +69,17 @@ native library applies its own default rather than a value this package invented
 | --- | --- | --- |
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText`, `contentHtml`, `commentsHtml` and `metadata` to return. An unnamed field is never computed, so omitting HTML skips serializing it |
 | `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
-| `InputEncoding` | null | An `encoding_rs` label to decode the payload with, instead of detecting the charset from it |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
-| `EnableFallback` | false | Whether to compare against the bundled readability-lxml candidate as well. The default is the FAST path: native recall and baseline recovery only |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
 | `ExcludeComments` | false | Whether to drop the page's comments |
 | `ExcludeTables` | false | Whether to drop tables |
 | `IncludeImages` | false | Whether to keep image references |
 | `IncludeLinks` | false | Whether to keep links |
 | `BlacklistedAuthors` | none | Authors whose documents are rejected |
-| `Deduplicate` | false | Whether to remove repeated content |
 | `HasEssentialMetadata` | false | Whether a document without essential metadata is rejected |
 | `MaxTreeSize` | 0 | An upper bound on the extracted tree's direct children; 0 means no limit |
-| `HtmlDateMode` | `Default` | How hard to look for a date, out of `Default`, `Fast`, `Extensive` and `Disabled` |
-| `PruneSelector` | none | A CSS selector whose matching nodes are removed before extraction |
-| `Config` | core defaults | The size thresholds: `CacheSize` 4096, `MaxDuplicateCount` 2, `MinDuplicateCheckSize` 100, `MinExtractedSize` 250, `MinExtractedCommentSize` 1, `MinOutputSize` 1, `MinOutputCommentSize` 1 |
+| `HtmlDateMode` | `Default` | How hard to look for a date, out of `Default`, `Fast` and `Extensive` |
+| `Config` | core defaults | The size thresholds: `MinExtractedSize` 250, `MinOutputSize` 1, `MinOutputCommentSize` 1 |
 
 ### Results and failures
 
@@ -140,15 +136,15 @@ Note: a member the request did not name is null; one it named that the page has 
 | `TrafilaturaException.Kind` | Raised when | Context |
 | --- | --- | --- |
 | `Io` | a compressed payload cannot be read | |
-| `UnsupportedCharset` | `InputEncoding` names a charset the decoder does not have | |
-| `CharsetNotDetected` | the payload's charset cannot be detected and `InputEncoding` is unset | |
+| `UnsupportedCharset` | the payload declares a charset the decoder does not have | |
+| `CharsetNotDetected` | the payload's charset cannot be detected | |
 | `MissingDocument` | the parser found no document | |
 | `HtmlLanguage` | the page's own declared language does not match `TargetLanguage` | |
 | `WrongLanguage` | the language of the extracted text does not match `TargetLanguage` | |
 | `RequiredTitle`, `RequiredUrl`, `RequiredDate` | `HasEssentialMetadata` is set and that piece is missing | |
 | `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
-| `DuplicateBody` | `Deduplicate` is set and the content repeats | |
+| `DuplicateBody` | the core reports the content as a duplicate; no option here turns deduplication on | |
 | `InvalidUrl` | `Url` is not an absolute `http`/`https` URL | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |

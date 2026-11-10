@@ -71,7 +71,6 @@ internal sealed class HtmlDateModeConverter : JsonConverter<HtmlDateMode>
                 "default" => HtmlDateMode.Default,
                 "fast" => HtmlDateMode.Fast,
                 "extensive" => HtmlDateMode.Extensive,
-                "disabled" => HtmlDateMode.Disabled,
                 _ => throw new JsonException("Unknown HtmlDateMode spelling."),
             },
             _ => throw new JsonException("HtmlDateMode must be a spelling or a number."),
@@ -89,9 +88,6 @@ internal sealed class HtmlDateModeConverter : JsonConverter<HtmlDateMode>
                 break;
             case HtmlDateMode.Extensive:
                 writer.WriteStringValue("extensive");
-                break;
-            case HtmlDateMode.Disabled:
-                writer.WriteStringValue("disabled");
                 break;
             default:
                 writer.WriteNumberValue((int)value);
@@ -111,8 +107,6 @@ internal sealed class RequestHeader
     public int SchemaVersion { get; init; } = 2;
 
     public string? Url { get; init; }
-
-    public string? InputEncoding { get; init; }
 
     public List<string>? ResponseFields { get; init; }
 

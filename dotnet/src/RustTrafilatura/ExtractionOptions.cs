@@ -45,11 +45,6 @@ public enum HtmlDateMode
     [JsonStringEnumMemberName("extensive")]
 #endif
     Extensive,
-
-#if NET9_0_OR_GREATER
-    [JsonStringEnumMemberName("disabled")]
-#endif
-    Disabled,
 }
 
 /// <summary>
@@ -58,20 +53,8 @@ public enum HtmlDateMode
 /// </summary>
 public sealed class ExtractionConfig
 {
-    /// <summary>Default 4096.</summary>
-    public long? CacheSize { get; set; }
-
-    /// <summary>Default 2.</summary>
-    public long? MaxDuplicateCount { get; set; }
-
-    /// <summary>Default 100.</summary>
-    public long? MinDuplicateCheckSize { get; set; }
-
     /// <summary>Default 250.</summary>
     public long? MinExtractedSize { get; set; }
-
-    /// <summary>Default 1.</summary>
-    public long? MinExtractedCommentSize { get; set; }
 
     /// <summary>Default 1.</summary>
     public long? MinOutputSize { get; set; }
@@ -90,14 +73,6 @@ public sealed class ExtractionConfig
 /// </remarks>
 public sealed class ExtractionOptions
 {
-    /// <summary>
-    /// A known `encoding_rs` label to decode the payload with, or null to detect it from the payload.
-    /// The payload is always raw bytes, so this always applies. This is a header key rather than an
-    /// option, which is why it is not serialized here.
-    /// </summary>
-    [JsonIgnore]
-    public string? InputEncoding { get; set; }
-
     /// <summary>
     /// The absolute `http`/`https` URL the page was fetched from, or null for "no URL". The extraction
     /// uses it for the metadata this document cannot carry itself, and any other value is rejected.
@@ -119,12 +94,6 @@ public sealed class ExtractionOptions
     /// <summary>The language to expect, or null for no expectation.</summary>
     public string? TargetLanguage { get; set; }
 
-    /// <summary>
-    /// Whether to compare against the bundled readability-lxml as well. The default is false, which is
-    /// FAST: native recall and baseline recovery only.
-    /// </summary>
-    public bool? EnableFallback { get; set; }
-
     /// <summary>How much of the page to keep. Null is the core's default of <see cref="ExtractionFocus.Balanced"/>.</summary>
     public ExtractionFocus? Focus { get; set; }
 
@@ -143,9 +112,6 @@ public sealed class ExtractionOptions
     /// <summary>Authors whose documents are rejected, or null for the core's default of none.</summary>
     public List<string>? BlacklistedAuthors { get; set; }
 
-    /// <summary>Whether to remove repeated content. Null is the core's default of false.</summary>
-    public bool? Deduplicate { get; set; }
-
     /// <summary>Whether a document without essential metadata is rejected. Null is the core's default of false.</summary>
     public bool? HasEssentialMetadata { get; set; }
 
@@ -154,9 +120,6 @@ public sealed class ExtractionOptions
 
     /// <summary>How hard to look for a date. Null is the core's default of <see cref="HtmlDateMode.Default"/>.</summary>
     public HtmlDateMode? HtmlDateMode { get; set; }
-
-    /// <summary>A CSS selector whose matching nodes are removed before extraction, or null for none.</summary>
-    public string? PruneSelector { get; set; }
 
     /// <summary>The size thresholds, or null to take the core's defaults for all of them.</summary>
     public ExtractionConfig? Config { get; set; }

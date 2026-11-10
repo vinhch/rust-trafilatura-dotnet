@@ -93,7 +93,7 @@ fn pseudo_random(seed: &mut u64, len: usize) -> Vec<u8> {
 fn header_over_cap_is_rejected() {
     // The same header shape under the cap parses and extracts, so only the length can explain the
     // rejection: a header the cap did not stop would reach the core, and the core never returns 2.
-    let accepted = br#"{"options":{"pruneSelector":"aside"}}"#;
+    let accepted = br#"{"options":{"focus":"favorRecall"}}"#;
     let (code, json) = call(accepted, ARTICLE.as_bytes());
     assert_eq!(code, 0, "the control header must extract: {json:?}");
 

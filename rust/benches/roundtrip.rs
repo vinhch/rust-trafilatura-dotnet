@@ -64,14 +64,12 @@ const CORE: usize = 0;
 const ROUNDTRIP: usize = 1;
 const ROUNDTRIP_HTML: usize = 2;
 
-/// The header for the default `responseFields`. `enableFallback: false` is the FAST path, and it is
-/// also the core's own default: the header states it rather than
-/// relying on it, so the pinned set is visible in the output.
-const HEADER_DEFAULT: &[u8] = br#"{"options":{"enableFallback":false}}"#;
+/// The header for the default `responseFields` and the core's default options.
+const HEADER_DEFAULT: &[u8] = br#"{}"#;
 
 /// The header for the `contentHtml` round trip: the default fields plus the opt-in HTML field.
 const HEADER_HTML: &[u8] =
-    br#"{"options":{"enableFallback":false},"responseFields":["contentText","commentsText","contentHtml","metadata"]}"#;
+    br#"{"responseFields":["contentText","commentsText","contentHtml","metadata"]}"#;
 
 const _: () = assert!(
     ITERATIONS.is_multiple_of(ROUNDS),
@@ -124,9 +122,7 @@ fn main() {
         ITERATIONS / ROUNDS
     );
     println!("bench: profile bench (cargo bench), which inherits release and lto = \"thin\"");
-    println!(
-        "bench: options (a) core            Options::default(), enableFallback = false (FAST)"
-    );
+    println!("bench: options (a) core            Options::default()");
     println!(
         "bench: options (b) roundtrip       {} responseFields = contentText, commentsText, metadata (default)",
         text(HEADER_DEFAULT)

@@ -46,8 +46,8 @@ internal static class Program
     private const int MeasuredCalls = 20;
     private const int Runs = 5;
 
-    /// <summary>The bench's pinned header: the FAST path, so the measured call is the one the bench times.</summary>
-    private static readonly byte[] Header = "{\"options\":{\"enableFallback\":false}}"u8.ToArray();
+    /// <summary>The bench's pinned header: the core's default options, so the measured call is the one the bench times.</summary>
+    private static readonly byte[] Header = "{}"u8.ToArray();
 
     /// <summary>
     /// The configuration this file was compiled in, so the profile printed below is the profile
@@ -88,7 +88,7 @@ internal static class Program
             return Fail("the string-envelope read found no contentText in the response");
         }
 
-        var options = new ExtractionOptions { EnableFallback = false };
+        var options = new ExtractionOptions();
         var shipped = Extractor.ExtractFromBytes(payload, options);
         if (!string.Equals(shipped.ContentText, envelopeText, StringComparison.Ordinal))
         {

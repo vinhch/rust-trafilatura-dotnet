@@ -117,27 +117,6 @@ public sealed class OptionsTests
         Assert.Contains("Z\u00FCrich", result.ContentText);
     }
 
-    /// <summary>
-    /// `inputEncoding` is a header key that reaches the decoder, so a label contradicting detection
-    /// changes the text. These are the article's UTF-8 bytes read as windows-1252: U+00AD and U+0308
-    /// are one byte each there and two bytes as UTF-8, so the core neither composes the NFD umlaut nor
-    /// drops the soft hyphen, and the result says so. Detection would have picked UTF-8 and produced
-    /// the other result, which is why the two have to differ before either is read.
-    /// </summary>
-    [Fact]
-    public void Input_Encoding_Names_The_Decoder()
-    {
-        var detected = Extractor.ExtractFromBytes(Fixtures.ArticleWithSoftHyphens);
-        var declared = Extractor.ExtractFromBytes(
-            Fixtures.ArticleWithSoftHyphens,
-            new ExtractionOptions { InputEncoding = "windows-1252" });
-
-        Assert.NotEqual(detected.ContentText, declared.ContentText);
-        Assert.Contains("research", detected.ContentText);
-        Assert.DoesNotContain("research", declared.ContentText);
-        Assert.Contains("re\u00C2", declared.ContentText);
-    }
-
     /// <summary>`url` is a header key that reaches the metadata, and the core validates it.</summary>
     [Fact]
     public void Url_Reaches_The_Metadata()
@@ -176,8 +155,8 @@ public sealed class OptionsTests
     }
 
     /// <summary>
-    /// Pins the request header's shape: camelCase keys, `responseFields` and `url` and
-    /// `inputEncoding` at the top level, every option inside `options`, and no key at all for a
+    /// Pins the request header's shape: camelCase keys, `responseFields` and `url` at the
+    /// top level, every option inside `options`, and no key at all for a
     /// member the caller left unset.
     /// </summary>
     [Fact]
@@ -187,7 +166,6 @@ public sealed class OptionsTests
         {
             ResponseFields = ["contentText"],
             Url = "https://example.org/article",
-            InputEncoding = "windows-1252",
             TargetLanguage = "en",
             Focus = ExtractionFocus.FavorRecall,
             HtmlDateMode = HtmlDateMode.Fast,
@@ -198,7 +176,6 @@ public sealed class OptionsTests
 
         Assert.Equal(2, header.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("https://example.org/article", header.GetProperty("url").GetString());
-        Assert.Equal("windows-1252", header.GetProperty("inputEncoding").GetString());
         Assert.Equal(["contentText"], header.GetProperty("responseFields").EnumerateArray().Select(field => field.GetString()));
 
         var options = header.GetProperty("options");
@@ -209,14 +186,13 @@ public sealed class OptionsTests
         Assert.Equal(4000, options.GetProperty("maxTreeSize").GetInt64());
         Assert.Equal(2, options.GetProperty("config").GetProperty("minOutputSize").GetInt64());
 
-        // The three header keys are header keys: a copy inside `options` is an unknown key, which the
+        // The two header keys are header keys: a copy inside `options` is an unknown key, which the
         // native side rejects outright instead of ignoring.
         Assert.False(options.TryGetProperty("url", out _));
-        Assert.False(options.TryGetProperty("inputEncoding", out _));
         Assert.False(options.TryGetProperty("responseFields", out _));
 
         // An unset member is absent, not null and not a value this layer invented.
-        Assert.False(options.TryGetProperty("pruneSelector", out _));
+        Assert.False(options.TryGetProperty("excludeTables", out _));
     }
 
     /// <summary>
@@ -231,13 +207,12 @@ public sealed class OptionsTests
     public void Header_Json_Is_Identical_Across_TargetFrameworks()
     {
         const string Expected =
-            """{"schemaVersion":2,"url":"https://example.test/page","inputEncoding":"utf-8","responseFields":["contentText"],"options":{"targetLanguage":"en","focus":"favorPrecision","excludeComments":true,"maxTreeSize":4000,"htmlDateMode":"extensive","config":{"minOutputSize":2}}}""";
+            """{"schemaVersion":2,"url":"https://example.test/page","responseFields":["contentText"],"options":{"targetLanguage":"en","focus":"favorPrecision","excludeComments":true,"maxTreeSize":4000,"htmlDateMode":"extensive","config":{"minOutputSize":2}}}""";
 
         var header = Request.Header(new ExtractionOptions
         {
             ResponseFields = ["contentText"],
             Url = "https://example.test/page",
-            InputEncoding = "utf-8",
             TargetLanguage = "en",
             Focus = ExtractionFocus.FavorPrecision,
             HtmlDateMode = HtmlDateMode.Extensive,
@@ -286,7 +261,6 @@ public sealed class OptionsTests
         Assert.Equal("default", DateModeWire(HtmlDateMode.Default));
         Assert.Equal("fast", DateModeWire(HtmlDateMode.Fast));
         Assert.Equal("extensive", DateModeWire(HtmlDateMode.Extensive));
-        Assert.Equal("disabled", DateModeWire(HtmlDateMode.Disabled));
 
         static string FocusWire(ExtractionFocus focus) =>
             Request.HeaderJson(new ExtractionOptions { Focus = focus })
