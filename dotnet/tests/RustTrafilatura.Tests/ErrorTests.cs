@@ -148,8 +148,7 @@ public sealed class ErrorTests
 
     /// <summary>
     /// One thousand concurrent calls over the real ABI return what the sequential call returns, field
-    /// for field, with nothing aborting the process. The options instance is shared, which is what
-    /// <see cref="Extractor.ExtractMany"/> does with it too.
+    /// for field, with nothing aborting the process. The options instance is shared across the calls.
     /// </summary>
     [Fact]
     public void Parallel_1000_Calls_AreConsistent()

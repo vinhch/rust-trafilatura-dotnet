@@ -3,8 +3,7 @@
 .NET binding for [`rust-trafilatura`](https://github.com/markusmobius/rust-trafilatura), the crate linked into a native library per RID and called in
 process over a length-delimited C ABI. Extraction is the crate's; this package supplies the ABI, the
 JSON contract and the managed surface. The payload crosses as a raw byte buffer and the response is
-parsed from the native bytes, with no base64, no UTF-16 copy and no intermediate `string`;
-`ExtractMany` batches under bounded parallelism.
+parsed from the native bytes, with no base64, no UTF-16 copy and no intermediate `string`.
 
 ## Installation
 
@@ -59,8 +58,6 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 | `Extractor.ExtractFromHtml(string html, ExtractionOptions? options = null)` | Extracts a page held as a string, encoding it as UTF-8 before the path below |
 | `Extractor.ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)` | Extracts bytes that are memory-backed: a `byte[]`, a slice, a pooled rent or a memory view, none of them copied |
 | `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
-| `Extractor.ExtractMany(IReadOnlyList<byte[]> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | Extracts a batch under bounded parallelism |
-| `Extractor.ExtractMany(IReadOnlyList<ReadOnlyMemory<byte>> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | The same batch over memory pages |
 | `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
 
 ### Options
@@ -224,31 +221,6 @@ Extraction is not incremental: the page is still held whole, once, in the rent, 
 builds its own tree from it. What this shape saves is a second page-sized copy and a page-sized
 allocation per call, not the page.
 
-### Batches
-
-`ExtractMany` runs pages in parallel with `maxDegreeOfParallelism` extractions at once, defaulting to
-`Environment.ProcessorCount`. Items come back in input order, and one page's failure stays in its own
-item rather than aborting the batch:
-
-```csharp
-var batch = Extractor.ExtractMany(pages, maxDegreeOfParallelism: 4);
-
-for (var index = 0; index < batch.Count; index++)
-{
-    if (!batch[index].Succeeded)
-    {
-        Console.WriteLine($"{index}: {batch[index].Error!.Kind}");
-        continue;
-    }
-
-    Console.WriteLine(batch[index].Result!.ContentText);
-}
-```
-
-A failure to run the extraction at all, a missing native library for one, is thrown instead: as
-itself when it was the only failure the loop collected, inside an `AggregateException` when several
-pages hit it.
-
 ### Only the fields you need
 
 `ResponseFields` shapes the response rather than the extraction, so it is the cheapest option to use:
@@ -293,7 +265,7 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   so a caller cannot catch it. A payload above 64 MiB and a header above 1 MiB are rejected before
   parsing; `MaxTreeSize` bounds the extracted tree, not the input, and is not a denial-of-service
   bound.
-- **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and  no cancellation token. `ExtractMany` is the only concurrency the package offers.
+- **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and no cancellation token.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 

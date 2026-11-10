@@ -44,20 +44,4 @@ public class CorpusBenchmarks
 
         return total;
     }
-
-    /// <summary>The same pages through the batch entry point, at the parallelism the case names.</summary>
-    /// <param name="maxDegreeOfParallelism">0 is every core, 1 is one extraction at a time.</param>
-    [Benchmark]
-    [Arguments(1)]
-    [Arguments(0)]
-    public long ExtractMany(int maxDegreeOfParallelism)
-    {
-        long total = 0;
-        foreach (var item in Extractor.ExtractMany(_pages, _options, maxDegreeOfParallelism))
-        {
-            total += item.Result?.ContentText?.Length ?? 0;
-        }
-
-        return total;
-    }
 }

@@ -1,9 +1,23 @@
+using System.Reflection;
 using Xunit;
 
 namespace RustTrafilatura.Tests;
 
 public sealed class ExtractionTests
 {
+    [Fact]
+    public void Extractor_Public_Surface_Is_The_Extract_Methods_And_Version()
+    {
+        var names = typeof(Extractor)
+            .GetMembers(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(member => member is MethodInfo { IsSpecialName: false } or PropertyInfo)
+            .Select(member => member.Name)
+            .Distinct()
+            .Order(StringComparer.Ordinal);
+
+        Assert.Equal(["ExtractFromBytes", "ExtractFromHtml", "ExtractFromSpan", "LibraryVersion"], names);
+    }
+
     [Fact]
     public void Extract_FromBytes_ReturnsTextAndMetadata()
     {

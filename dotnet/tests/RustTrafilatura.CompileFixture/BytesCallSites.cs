@@ -42,12 +42,6 @@ internal static class BytesCallSites
         // A string stays a string call site.
         ExtractionResult fromString = Extractor.ExtractFromHtml("<p>hi</p>");
 
-        // The batch keeps both overloads, so each collection a caller holds binds to the one for it.
-        IReadOnlyList<ExtractionBatchItem> fromListOfArrays = Extractor.ExtractMany(new List<byte[]> { page });
-        IReadOnlyList<ExtractionBatchItem> fromArrayOfArrays = Extractor.ExtractMany(new[] { page, page });
-        IReadOnlyList<ExtractionBatchItem> fromMemoryList = Extractor.ExtractMany(
-            new List<ReadOnlyMemory<byte>> { view });
-
         // Unmanaged memory reaches the same entry point as a span rather than through an adapter type,
         // and the caller keeps ownership of the buffer. Forming the span needs unsafe at the call site.
         unsafe
@@ -58,6 +52,5 @@ internal static class BytesCallSites
         }
 
         _ = (fromArray, fromNullArray, fromNullLiteral, fromMemory, fromSliceWithOptions, fromSpan, fromStackAlloc, fromMemorySpan, fromString);
-        _ = (fromListOfArrays, fromArrayOfArrays, fromMemoryList);
     }
 }
