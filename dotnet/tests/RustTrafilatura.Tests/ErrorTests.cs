@@ -103,9 +103,9 @@ public sealed class ErrorTests
     }
 
     /// <summary>
-    /// The enum is the wire contract's kind table: one member per kind that
-    /// <c>rust/src/contract.rs</c> <c>error_kind</c> and the README error table list, plus
-    /// <see cref="TrafilaturaErrorKind.Unknown"/>. A missing or renamed member would otherwise fall
+    /// The enum is the wire contract's kind table: one member per row of the README error table, that is
+    /// the core kinds from <c>rust/src/contract.rs</c> <c>error_kind</c>, <c>InvalidRequest</c> and
+    /// <c>Panic</c> from <c>rust/src/lib.rs</c>, and <see cref="TrafilaturaErrorKind.Unknown"/>. A missing or renamed member would otherwise fall
     /// through the kind switch to <c>Unknown</c> in production, turning a named failure into an
     /// anonymous one, which no other test would notice.
     /// </summary>

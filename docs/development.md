@@ -21,7 +21,7 @@ The SDK is pinned in `global.json`, which also opts the test projects into Micro
 ## Scripts
 
 Every task runs through `scripts/`. Each script comes as a `.sh` and `.ps1` pair with the same
-arguments (the `.ps1` twins need PowerShell 7.4 or later); change both together. `--help` on any of
+arguments (the `.ps1` twins run on PowerShell 7); change both together. `--help` on any of
 them prints its flags.
 
 | Script | Does | Flags |
@@ -84,7 +84,8 @@ without creating a release.
 
 - `scripts/build.sh` copies the library into `dotnet/src/RustTrafilatura/runtimes/` under the RID
   and writes a build stamp beside it. The stamp digests the toolchain version and every file
-  `source_paths` in `scripts/build.sh` lists: the non-test `.rs` files under `rust/`, plus
+  `source_paths` in `scripts/build.sh` lists: the `.rs` files under `rust/` outside `rust/tests/`,
+  `rust/benches/` and `rust/examples/`, plus
   `rust/Cargo.toml` and `rust/Cargo.lock`. Any change there, `scripts/version.sh --set` included,
   makes the stamp stale, and `scripts/test.sh` fails until `scripts/build.sh` runs again.
 - The stamp logic in `scripts/build.sh` and `scripts/build.ps1` has to stay byte-identical.
@@ -137,3 +138,5 @@ Writing rules that keep it exact:
   `dotnet/benchmarks/corpus/`, `dotnet/src/RustTrafilatura/runtimes/`.
 - Root files (`AGENTS.md`, `README.md`) have no `/` and are not checked as pointers.
 - On Windows `test -e` ignores case, so a wrong-case path passes locally and fails on Linux.
+- A `::Name` matches as a substring anywhere in the file, so a short name (`::Read`) can pass after
+  the symbol it meant is gone; prefer the most specific name.

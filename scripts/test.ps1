@@ -23,7 +23,7 @@ function Show-Usage {
     @"
 Usage: scripts/$ScriptName
 
-Runs every command CI runs: cargo fmt --check, cargo clippy --locked --all-targets -- -D warnings,
+Runs every command the CI test job runs: cargo fmt --check, cargo clippy --locked --all-targets -- -D warnings,
 cargo nextest run --locked and a second cargo nextest run --locked --features test-hooks in rust/,
 a cargo test --locked --doc for the doc tests nextest does not run, then dotnet build -c Release and
 one dotnet test -c Release per target framework in dotnet/.

@@ -1,4 +1,4 @@
-# Called by ci.yml on a pull request and a main push, and by release.yml on a tag.
+# Called by ci.yml on a pull request and a main push, and by release.yml on a tag or a rehearsal dispatch.
 name: _ci
 
 on:

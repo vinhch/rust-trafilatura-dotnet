@@ -48,3 +48,5 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-2 | Re-add a batch method as a managed wrapper over `ExtractFromBytes` if a consumer asks; no native batch (the crate's `extract_batch` spawns its own threads). | Phase 4 |
 | F-3 | `Metadata.Language` and `WrongLanguage`: reachable once the crate closes its OI-4 (language detection). | trafilatura-rust OI-4 |
 | F-4 | Comments HTML: the crate records it as its F-80. | trafilatura-rust F-80 |
+| F-5 | Run the docs check from `docs/development.md` in CI on Ubuntu, so a broken pointer fails the pull request instead of relying on the closing agent, and a wrong-case path fails as it would on Linux. | Phase 2 |
+| F-6 | README links into `docs/` are relative and break on the nuget.org package page; use absolute GitHub URLs for them. | Phase 4 |

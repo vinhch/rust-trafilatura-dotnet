@@ -82,12 +82,12 @@ from the repo root, replace `<old>` with the current value); the test fails when
 | New top-level header key | `rust/src/contract.rs::Header` | `dotnet/src/RustTrafilatura/HeaderContext.cs::RequestHeader`, `dotnet/src/RustTrafilatura/Request.cs::Header`; a `[JsonIgnore]` member on `ExtractionOptions` only when callers set the key through options, never for a value an entry point supplies | `dotnet/tests/RustTrafilatura.Tests/OptionsTests.cs::Header_Keys_Are_Unknown_Inside_Options` |
 | Response field | `rust/src/contract.rs::ResponseField` (with `DEFAULT_RESPONSE_FIELDS`), `rust/src/engine.rs::Response`, `rust/src/engine.rs::MetadataJson` | `git grep -n -e commentsText`: `dotnet/src/RustTrafilatura/Response.cs`, `dotnet/src/RustTrafilatura/ExtractionResult.cs`, the `ResponseFields` doc in `dotnet/src/RustTrafilatura/ExtractionOptions.cs`, the failure-envelope key lists in `rust/tests/`, the README | `dotnet/tests/RustTrafilatura.Tests/ResponseTests.cs::Every_Metadata_Member_Reads_Its_Own_Key` |
 | Error kind | `rust/src/contract.rs::error_kind` (core errors), `rust/src/lib.rs::request_error` and `rust/src/lib.rs::error_response` (invalid request, panic) | `git grep -n -e RequiredTitle`: `dotnet/src/RustTrafilatura/TrafilaturaException.cs::TrafilaturaErrorKind`, `dotnet/src/RustTrafilatura/Failures.cs::ReadKind`, the README error table | `dotnet/tests/RustTrafilatura.Tests/ErrorTests.cs::Error_Kind_Enum_Matches_The_Contract`, `rust/src/contract.rs::error_kind_covers_every_core_variant` |
-| New or changed export | the export in `rust/src/lib.rs` and the export list in its module doc | `git grep -n -e rt_version` (an existing export): the `LibraryImport` in `dotnet/src/RustTrafilatura/Interop.cs`, `docs/architecture.md`; a new test hook also goes on the forbidden lists in `scripts/release.sh` and `scripts/release.ps1`; a public signature change also reaches `dotnet/tests/RustTrafilatura.CompileFixture/` and `dotnet/tests/RustTrafilatura.AotConsumer/` | per-export null and out-parameter cases in `rust/tests/abi_hardening.rs` |
-| ABI or schema bump | `rust/src/lib.rs::ABI_VERSION`, `rust/src/contract.rs::SCHEMA_VERSION` | `git grep -n -i -E -e 'abi.{0,10}\b<old>\b' -e 'schema.?version.{0,20}\b<old>\b' -e 'Equal\(<old>, version'`: `dotnet/src/RustTrafilatura/LibraryContract.cs`, `dotnet/src/RustTrafilatura/HeaderContext.cs`, doc comments and test literals; plus the README "Compatibility and Limitations" sentence | `dotnet/tests/RustTrafilatura.Tests/AbiContractTests.cs::RealLibrary_Passes_The_Contract_Check` |
+| New or changed export | the export in `rust/src/lib.rs` and the export list in its module doc | `git grep -n -e rt_version` (an existing export): the `LibraryImport` in `dotnet/src/RustTrafilatura/Interop.cs`, `docs/architecture.md`; a new test hook also goes on the forbidden lists in `scripts/release.sh` and `scripts/release.ps1`; a public signature change: see "Tests" below | `rust/tests/abi.rs::null_out_params_are_rejected_without_writing` (null out-parameters per export), `rust/tests/abi_hardening.rs` (null buffers, `rt_free`, the panic hook) |
+| ABI or schema bump | `rust/src/lib.rs::ABI_VERSION`, `rust/src/contract.rs::SCHEMA_VERSION` | `git grep -n -i -E -e 'abi.{0,10}\b<old>\b' -e 'schema.?version.{0,20}\b<old>\b' -e 'Equal\(<old>, .*abi' -e 'Equal\(<old>, .*schema'`: `dotnet/src/RustTrafilatura/LibraryContract.cs`, `dotnet/src/RustTrafilatura/HeaderContext.cs`, doc comments and test literals; plus the README "Compatibility and Limitations" sentence | `dotnet/tests/RustTrafilatura.Tests/AbiContractTests.cs::RealLibrary_Passes_The_Contract_Check` |
 | Input cap or env var | the cap constants and env names in `rust/src/lib.rs`, and the `rust/src/lib.rs::rt_extract` doc | `git grep -n -e RUSTTRAFILATURA_ -e MiB -e '1024 \* 1024'`: `rust/tests/abi_hardening.rs`, `rust/tests/caps.rs`, `rust/examples/depth_probe.rs`, the README | `rust/tests/caps.rs` |
 | Package version | `rust/Cargo.toml`, `dotnet/src/RustTrafilatura/RustTrafilatura.csproj`, `rust/Cargo.lock` | change only through `scripts/version.sh --set`, which writes all three | `scripts/version.sh --check` (CI and the release guard) |
 | Core dependency bump | the exact pin in `rust/Cargo.toml` | `git grep -n -E -e 'rust[-_]trafilatura[^-_]' -e 'rust[-_]trafilatura$' -e rust_htmldate`: the lockfile readers `rust/build.rs` and `dotnet/tests/RustTrafilatura.Tests/Repository.cs::CoreVersion`, `use` paths, docs; the pinned core commit in `.github/workflows/quality.yml`; licenses in `rust/deny.toml` and `THIRD-PARTY-NOTICES.md` (run `cargo deny check advisories licenses bans` in `rust/`); a new package version; re-check the option and error kind rows | `dotnet/tests/RustTrafilatura.Tests/ExtractionTests.cs::LibraryVersion_Matches_TheCrateAndCoreItWasBuiltFrom`, `rust/src/contract.rs::error_kind_covers_every_core_variant` |
-| Toolchain or SDK bump | Rust: `rust-version` in `rust/Cargo.toml` and the commit SHA every Rust toolchain action step pins (the version comment follows the SHA; Dependabot cannot move it); .NET: `global.json` | `git grep -n -e '<old version>' -e '<old SHA>'`: `.github/workflows/`, `docs/development.md` prerequisites | CI; the rustc version also feeds the build stamp |
+| Toolchain or SDK bump | Rust: `rust-version` in `rust/Cargo.toml` and the commit SHA every Rust toolchain action step pins (the version comment follows the SHA; Dependabot cannot move it); nextest: the `cargo-nextest@` pin in `.github/workflows/_ci.yml` and `.github/workflows/quality.yml`; .NET: `global.json` | `git grep -n -e '<old version>' -e '<old SHA>'`: `.github/workflows/`, `docs/development.md` prerequisites | CI; the rustc version also feeds the build stamp |
 
 ## Tests
 
@@ -107,16 +107,18 @@ from the repo root, replace `<old>` with the current value); the test fails when
   [docs/development.md](docs/development.md). Usual loop: `scripts/build.sh`, then `scripts/test.sh`.
 - `.sh` and `.ps1` twins take the same arguments and change together; the build-stamp logic in
   `scripts/build.sh` and `scripts/build.ps1` stays byte-identical.
-- Any change to the stamp inputs (`source_paths` in `scripts/build.sh`: non-test Rust sources,
-  `rust/Cargo.toml`, `rust/Cargo.lock`, the toolchain), `scripts/version.sh --set` included, makes
+- Any change to the stamp inputs (`source_paths` in `scripts/build.sh`: Rust sources outside
+  `rust/tests/`, `rust/benches/` and `rust/examples/`, `rust/Cargo.toml`, `rust/Cargo.lock`, the
+  toolchain), `scripts/version.sh --set` included, makes
   `scripts/test.sh` fail until `scripts/build.sh` runs again.
 - The staged-library item in `dotnet/Directory.Build.props` must not use the item type
   `NativeLibrary`: Native AOT hands those to the linker, which fails with LNK1107.
 - A green `scripts/test.sh` does not prove: the AOT publish with IL2026 and IL3050 as errors
   (`.github/workflows/_ci.yml`); `cargo deny`, mutants, the bench and the core-untouched build
   (`.github/workflows/quality.yml`, on pull requests touching `rust/` and weekly); the non-host RID
-  builds and the five-RID pack (`.github/workflows/release.yml`). A `workflow_dispatch` rehearsal of
-  `release.yml` runs all of it except the attestation and the GitHub Release.
+  builds and the five-RID pack (`.github/workflows/release.yml`). A `workflow_dispatch` rehearsal runs
+  `.github/workflows/release.yml` except the attestation and the GitHub Release; it does not run
+  `.github/workflows/quality.yml`.
 - Never push a tag or run `.github/workflows/publish.yml`: a tag creates a public GitHub Release, and
   both are the user's call.
 
