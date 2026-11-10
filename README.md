@@ -68,7 +68,7 @@ native library applies its own default rather than a value this package invented
 | Option | Default | Effect |
 | --- | --- | --- |
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is left out of the response and is null in the result |
-| `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry; any string is passed through and an empty string means none |
+| `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry. Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
 | `ExcludeComments` | false | Whether to drop the page's comments |
@@ -132,7 +132,7 @@ Note: a member the request did not name is null; one it named that the page has 
 | `TrafilaturaException.Kind` | Raised when | Context |
 | --- | --- | --- |
 | `Io` | a compressed payload cannot be read | |
-| `UnsupportedCharset` | the payload declares a charset the decoder does not have | |
+| `UnsupportedCharset` | not raised: no option sets an input encoding, so the charset is always detected | |
 | `CharsetNotDetected` | the payload's charset cannot be detected | |
 | `MissingDocument` | the parser found no document | |
 | `HtmlLanguage` | the page's own declared language does not match `TargetLanguage` | |
@@ -140,7 +140,7 @@ Note: a member the request did not name is null; one it named that the page has 
 | `RequiredTitle`, `RequiredUrl`, `RequiredDate` | `HasEssentialMetadata` is set and that piece is missing | |
 | `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
-| `DuplicateBody` | the core reports the content as a duplicate; no option here turns deduplication on | |
+| `DuplicateBody` | not raised: deduplication is off and no option turns it on | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
 | `Unknown` | the library reported a kind this client version does not recognise | |

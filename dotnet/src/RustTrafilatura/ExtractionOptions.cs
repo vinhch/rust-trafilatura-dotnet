@@ -75,7 +75,8 @@ public sealed class ExtractionOptions
 {
     /// <summary>
     /// The URL the page was fetched from, or null or an empty string for "no URL". The extraction
-    /// uses it for the metadata this document cannot carry itself, and any string is passed through.
+    /// uses it for the metadata this document cannot carry itself. Any string is accepted; one that is not an
+    /// absolute URL is ignored without an error.
     /// This is a header key rather than an option, which is why it is not serialized here.
     /// </summary>
     [JsonIgnore]
