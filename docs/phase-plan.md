@@ -27,7 +27,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 
 | Phase | Shipped in |
 | --- | --- |
-| 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `b84bca2..e004856` and the phase-closing commit |
+| 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `3d8960b..e004856` and the phase-closing commit |
 
 ## Open items register
 

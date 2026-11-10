@@ -67,7 +67,7 @@ native library applies its own default rather than a value this package invented
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is left out of the response and is null in the result |
+| `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is null in the response and in the result |
 | `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry. Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
@@ -214,8 +214,8 @@ allocation per call, not the page.
 
 ### Only the fields you need
 
-`ResponseFields` shapes the response rather than the extraction: a field that is not named is left
-out of the response, so it is neither serialized nor read back.
+`ResponseFields` shapes the response rather than the extraction: a field that is not named is null in
+the response and in the result, so it is not serialized and not read back.
 
 ```csharp
 var options = new ExtractionOptions { ResponseFields = ["contentText", "metadata"] };

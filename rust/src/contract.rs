@@ -202,7 +202,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn default_response_fields_omit_html() {
+    fn default_response_fields_are_text_comments_and_metadata() {
         let request = parse_request(br#"{}"#).unwrap();
         assert_eq!(
             request.fields,
