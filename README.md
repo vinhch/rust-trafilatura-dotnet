@@ -261,56 +261,9 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 
 ## Development
 
-Prerequisites, with the minimum version of each:
-
-| Tool | Minimum | Needed by |
-| --- | --- | --- |
-| .NET SDK | 10.0.100 | everything under `dotnet/` |
-| .NET 8 runtime | 8.0 | the `net8.0` tests |
-| Rust toolchain | 1.98.1 | everything under `rust/` |
-| `cargo-nextest` | 0.9.148 | `test.sh` |
-| `cargo-mutants` | latest | the mutation runs in `quality.yml` |
-| git | any | `corpus.sh`, which fetches the benchmark pages once |
-| clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer |
-
-```console
-bash scripts/version.sh    # report the version the crate, the lockfile and the package carry
-bash scripts/build.sh      # stage the host RID's native library
-bash scripts/test.sh       # verify the staged library, then run both suites; --report adds the reports
-bash scripts/release.sh    # pack artifacts/RustTrafilatura.<version>.nupkg, then check it
-bash scripts/bench.sh      # the round-trip ratio under its budget
-```
-
-The same five scripts exist as `scripts/*.ps1`, and each one's `--help` lists its flags. `test.sh --report`
-puts one JUnit file per test command into `artifacts/test-results/`, the directory the CI report step
-publishes from. `version.sh --set` and `--check` are what keep the crate version, the lockfile entry and the
-package `<Version>` one number.
-
-Cutting a release is in [`docs/releasing.md`](docs/releasing.md): the version, the tag, the checks and the
-GitHub Release that tag produces, and the manual publish to NuGet through trusted publishing.
-
-`release.sh` requires all five RIDs to be staged unless it is given `--allow-partial`, and refuses a
-staged library that exports a `test-hooks` symbol. Its `Category=Package` check reads the packed `.nupkg`,
-so `test.sh` leaves it out and a bare `dotnet test` includes it: skip it with xunit v3's own
-`--filter-not-trait "Category=Package"`. The test project is an executable on Microsoft.Testing.Platform,
-opted in by the `test` section of `global.json`, which is why a trait flag replaces the VSTest `--filter`
-expression. A locally packed package whose version is already installed needs a fresh `NUGET_PACKAGES`
-folder or the cached entry cleared, because NuGet resolves by version.
-
-`bench.sh` compares one `rt_extract` call against a direct call into the `rust-trafilatura` core, and fails
-when the ratio exceeds its budget; it is a ratio, not a throughput figure. The allocation and speed analysis
-is in [`docs/research/binding-performance.md`](docs/research/binding-performance.md).
-
-`dotnet/benchmarks/RustTrafilatura.Benchmarks` is the BenchmarkDotNet project for the managed side:
-the three single-page entry points over pages spread across the corpus's size range, plus two
-whole-corpus benchmarks, each case reporting its time and the managed bytes it allocates.
-`bash scripts/corpus.sh` fetches the pages it reads, the pinned commit of
-`content-extractor-benchmark`, into the gitignored `dotnet/benchmarks/corpus/`, and then
-`dotnet run --project dotnet/benchmarks/RustTrafilatura.Benchmarks -c Release -- --job short`
-runs it against the staged native library. A run takes minutes, so `test.sh` and CI leave it out.
-
-`dotnet/tests/RustTrafilatura.AotConsumer` is not in `dotnet/RustTrafilatura.sln`: it is published and run,
-never tested and never packed.
+Building, testing, benchmarking and what CI runs are in [`docs/development.md`](docs/development.md);
+cutting a release, from the version bump to the NuGet publish, is in
+[`docs/releasing.md`](docs/releasing.md).
 
 ## Credits
 
