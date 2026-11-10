@@ -61,9 +61,6 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 | `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
 | `Extractor.ExtractMany(IReadOnlyList<byte[]> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | Extracts a batch under bounded parallelism |
 | `Extractor.ExtractMany(IReadOnlyList<ReadOnlyMemory<byte>> pages, ExtractionOptions? options = null, int maxDegreeOfParallelism = 0)` | The same batch over memory pages |
-| `Extractor.ConfigureWorkerCap(int cap)` | Sets the runaway-worker cap once per process; returns `WorkerCapOutcome.Applied` or `AlreadyFixed`, and throws for a cap of 0 or below |
-| `Extractor.WorkerCap` | The cap that applies right now, read without fixing it |
-| `Extractor.LiveRunawayWorkers` | An advisory snapshot of how many detached budgeted workers are live |
 | `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
 
 ### Options
@@ -76,7 +73,6 @@ native library applies its own default rather than a value this package invented
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText`, `contentHtml`, `commentsHtml` and `metadata` to return. An unnamed field is never computed, so omitting HTML skips serializing it |
 | `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
 | `InputEncoding` | null | An `encoding_rs` label to decode the payload with, instead of detecting the charset from it |
-| `TimeBudgetMs` | null | The wall-clock budget for the whole call, in milliseconds. A call with a budget returns by the deadline plus scheduler slack with a `TimeBudgetExceeded` failure, while the underlying extraction finishes on a detached worker afterwards. Valid values are 1..=4294967296; 0, negative and out-of-range values are rejected as `InvalidRequest`. The pool of budgeted workers is capped by `Extractor.ConfigureWorkerCap` or `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS` (default 16), and a call that finds it full fails with `WorkerCapExceeded` |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `EnableFallback` | false | Whether to compare against the bundled readability-lxml candidate as well. The default is the FAST path: native recall and baseline recovery only |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
@@ -156,8 +152,6 @@ Note: a member the request did not name is null; one it named that the page has 
 | `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
 | `DuplicateBody` | `Deduplicate` is set and the content repeats | |
-| `TimeBudgetExceeded` | the call's `TimeBudgetMs` deadline expired | `budgetMs` |
-| `WorkerCapExceeded` | the budget path's detached-worker pool is full | `limit` |
 | `InvalidUrl` | `Url` is not an absolute `http`/`https` URL | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
@@ -265,65 +259,6 @@ HTML costs.
 var options = new ExtractionOptions { ResponseFields = ["contentText", "metadata"] };
 ```
 
-### A wall-clock budget
-
-`TimeBudgetMs` bounds the wait, not the work: a call with a budget returns by the deadline plus
-scheduler slack with a `TimeBudgetExceeded` failure, while the extraction finishes on a detached
-worker afterwards. That is the shape for untrusted pages, where a pathological document must not pin
-its caller, and the two kinds stay separate because they call for different responses — the budget
-expired means this page was slow, the pool is full means the process is saturated.
-
-```csharp
-try
-{
-    var result = Extractor.ExtractFromBytes(page, new ExtractionOptions { TimeBudgetMs = 500 });
-}
-catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorKind.TimeBudgetExceeded)
-{
-    // The page outlasted its budget. The worker keeps running to completion in the background,
-    // so a retry re-enters a process that is still paying for this page.
-    return;
-}
-catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorKind.WorkerCapExceeded)
-{
-    // Every detached-worker slot is taken: the right response is backoff, not another page.
-    return;
-}
-```
-
-### Bounding the worker pool
-
-The pool those workers run on is capped, once per process, by whichever of two setters fixes the
-cap first: `Extractor.ConfigureWorkerCap(cap)` in code, or the `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`
-variable in the process environment (default 16). Calling the configure at host start, before the
-first budgeted call, is the way to make the cap certain:
-
-```csharp
-Extractor.ConfigureWorkerCap(32);  // WorkerCapOutcome.Applied
-```
-
-The outcome says which writer won: `Applied` when this call fixed the cap, `AlreadyFixed` when an
-earlier configure or the first budgeted call had already fixed it, in which case nothing changes and
-the process keeps the earlier value — a late configure cannot silently run on the default. On Unix,
-setting the variable through `Environment.SetEnvironmentVariable` updates a managed copy that the
-native side never sees, so the in-code route there is the configure, not the variable; on the
-Windows path the variable is read at the first budgeted call, so it too has to be in place before
-that call — a container's environment block, a systemd unit, `launchSettings`.
-
-For a positive integer the variable names the cap; an absent, blank, zero or unparsable value keeps
-the default. `Extractor.WorkerCap` reports the cap that applies right now without fixing it —
-before anything else it is the value that would apply, so a host may log its intent before
-configuring — and `Extractor.LiveRunawayWorkers` is an advisory snapshot of how many detached
-workers are live, for saturation logging behind a `WorkerCapExceeded` burst. The cap counts every
-in-flight budgeted call — a worker holds its slot from its call's start, not from its deadline —
-and each one carries its own payload copy, its working heap and a 16 MiB stack, so the cap is the
-worst-case memory bound of the budget path; raise it only with that budget in mind. A call
-without a budget takes the same one-shot path as before, so the option costs nothing until it is set.
-In `ExtractMany` the budget applies to each page's own call and every page holds a slot while it
-runs, so a batch whose parallelism exceeds the cap has its extra pages fail with `WorkerCapExceeded`
-right away: keep `maxDegreeOfParallelism` at or below the cap. A batch of N pages at degree of
-parallelism D can take about N/D times the budget in total.
-
 ## Supported Platforms
 
 The package ships a `net8.0` and a `net10.0` asset: a `net9.0` project resolves the `net8.0` one,
@@ -348,7 +283,7 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
 ## Compatibility and Limitations
 
 - **The contract is checked once per process.** The first extracting call compares the loaded
-  library's `abi` and `schemaVersion` against the `1` and `1` this assembly was compiled for, and
+  library's `abi` and `schemaVersion` against the `2` and `2` this assembly was compiled for, and
   throws `ContractVersionMismatchException`, carrying both sides, when they differ. Later calls
   report that same outcome rather than re-reading the library; `crate` and `core` are versioned
   independently of `abi` and are not compared.
@@ -358,15 +293,7 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   so a caller cannot catch it. A payload above 64 MiB and a header above 1 MiB are rejected before
   parsing; `MaxTreeSize` bounds the extracted tree, not the input, and is not a denial-of-service
   bound.
-- **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and
-  no cancellation token. `ExtractMany` is the only concurrency the package offers. The bounded
-  alternative to cancelling is `TimeBudgetMs`: a call with a budget returns by the deadline plus
-  scheduler slack with a `TimeBudgetExceeded` failure, while the extraction finishes on a detached
-  worker afterwards — the core has no cancellation checkpoints, so the budget bounds the caller's
-  wait, not the worker's work. Those workers are capped by `Extractor.ConfigureWorkerCap` or
-  `RUSTTRAFILATURA_MAX_RUNAWAY_WORKERS`, whichever fixes the cap first (default 16, read once); a
-  call that finds the pool full fails with `WorkerCapExceeded`, which a caller answers with backoff
-  rather than a per-page timeout.
+- **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and  no cancellation token. `ExtractMany` is the only concurrency the package offers.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 

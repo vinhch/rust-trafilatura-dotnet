@@ -17,8 +17,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RustTrafilatura.Benchmarks", "benchmarks\RustTrafilatura.Benchmarks\RustTrafilatura.Benchmarks.csproj", "{DE2581E9-7160-4F1B-8EA5-2EE770EE7F37}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RustTrafilatura.WorkerCap.Tests", "tests\RustTrafilatura.WorkerCap.Tests\RustTrafilatura.WorkerCap.Tests.csproj", "{1DA94BC8-251E-43BB-82DD-03D047D22599}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -77,18 +75,6 @@ Global
 		{DE2581E9-7160-4F1B-8EA5-2EE770EE7F37}.Release|x64.Build.0 = Release|Any CPU
 		{DE2581E9-7160-4F1B-8EA5-2EE770EE7F37}.Release|x86.ActiveCfg = Release|Any CPU
 		{DE2581E9-7160-4F1B-8EA5-2EE770EE7F37}.Release|x86.Build.0 = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|x64.Build.0 = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Debug|x86.Build.0 = Debug|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|x64.ActiveCfg = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|x64.Build.0 = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|x86.ActiveCfg = Release|Any CPU
-		{1DA94BC8-251E-43BB-82DD-03D047D22599}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -98,6 +84,5 @@ Global
 		{DA4ABE42-B717-478F-8D8D-9D163F9D05E2} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{6F1C7A5E-2B4D-4C8A-9E31-0D5B7C3A1F82} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{DE2581E9-7160-4F1B-8EA5-2EE770EE7F37} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
-		{1DA94BC8-251E-43BB-82DD-03D047D22599} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

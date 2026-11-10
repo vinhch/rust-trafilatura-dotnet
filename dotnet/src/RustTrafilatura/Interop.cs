@@ -131,74 +131,6 @@ internal static partial class Interop
         }
     }
 
-    /// <summary>
-    /// Sets the runaway-worker cap, mapping the ABI's loading failures exactly as
-    /// <see cref="Extract{TResult}"/> does so a stale or missing library is reported the same
-    /// way here as everywhere else. The caller owns the argument's validity: a non-positive cap
-    /// is rejected on the managed side before any native call.
-    /// </summary>
-    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
-    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
-    internal static int SetWorkerCap(int cap)
-    {
-        try
-        {
-            return RtSetWorkerCap(cap);
-        }
-        catch (DllNotFoundException exception)
-        {
-            throw MissingLibrary(exception);
-        }
-        catch (EntryPointNotFoundException exception)
-        {
-            throw MissingSymbol(exception);
-        }
-    }
-
-    /// <summary>
-    /// Reports the runaway-worker cap without fixing it, with the same loading-failure mapping
-    /// as <see cref="SetWorkerCap"/>.
-    /// </summary>
-    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
-    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
-    internal static int WorkerCap()
-    {
-        try
-        {
-            return RtWorkerCap();
-        }
-        catch (DllNotFoundException exception)
-        {
-            throw MissingLibrary(exception);
-        }
-        catch (EntryPointNotFoundException exception)
-        {
-            throw MissingSymbol(exception);
-        }
-    }
-
-    /// <summary>
-    /// Reports how many detached budgeted workers are live right now, with the same
-    /// loading-failure mapping as <see cref="SetWorkerCap"/>.
-    /// </summary>
-    /// <exception cref="DllNotFoundException">The native library is not where the host resolves libraries from.</exception>
-    /// <exception cref="EntryPointNotFoundException">The library that loaded is not a build of this ABI.</exception>
-    internal static int LiveRunawayWorkers()
-    {
-        try
-        {
-            return RtLiveRunawayWorkers();
-        }
-        catch (DllNotFoundException exception)
-        {
-            throw MissingLibrary(exception);
-        }
-        catch (EntryPointNotFoundException exception)
-        {
-            throw MissingSymbol(exception);
-        }
-    }
-
     /// <summary>Returns 0 ok, 1 extraction error, 2 invalid request, 3 a caught panic.</summary>
     [LibraryImport(LibraryName, EntryPoint = "rt_extract", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
@@ -216,25 +148,10 @@ internal static partial class Interop
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial void RtFree(nint pointer, nuint length, nuint capacity);
 
-    /// <summary>Returns `{"abi":1,"schemaVersion":1,"crate":"..."}`.</summary>
+    /// <summary>Returns `{"abi":2,"schemaVersion":2,"crate":"...","core":"..."}`.</summary>
     [LibraryImport(LibraryName, EntryPoint = "rt_version", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static unsafe partial int RtVersion(nint* outPointer, nint* outLength, nint* outCapacity);
-
-    /// <summary>Sets the runaway-worker cap: 0 applied, 1 already fixed, 2 invalid.</summary>
-    [LibraryImport(LibraryName, EntryPoint = "rt_set_worker_cap", StringMarshalling = StringMarshalling.Utf8)]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    internal static partial int RtSetWorkerCap(int cap);
-
-    /// <summary>Reports the runaway-worker cap without fixing it.</summary>
-    [LibraryImport(LibraryName, EntryPoint = "rt_worker_cap", StringMarshalling = StringMarshalling.Utf8)]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    internal static partial int RtWorkerCap();
-
-    /// <summary>Reports how many detached budgeted workers are live right now.</summary>
-    [LibraryImport(LibraryName, EntryPoint = "rt_live_runaway_workers", StringMarshalling = StringMarshalling.Utf8)]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    internal static partial int RtLiveRunawayWorkers();
 
     /// <summary>
     /// The library the host could not open. A source checkout stages it with the build scripts while a
@@ -255,7 +172,7 @@ internal static partial class Interop
     /// </summary>
     private static EntryPointNotFoundException MissingSymbol(EntryPointNotFoundException inner) =>
         new(
-            $"The native library {LibraryFileName} loaded but does not export the rt_extract, rt_free, rt_version, rt_set_worker_cap, rt_worker_cap and rt_live_runaway_workers symbols, so it is not a build of this ABI - typically a stale or placeholder artifact. Rebuild it with scripts/build.ps1 (or scripts/build.sh).{Environment.NewLine}"
+            $"The native library {LibraryFileName} loaded but does not export the rt_extract, rt_free and rt_version symbols, so it is not a build of this ABI - typically a stale or placeholder artifact. Rebuild it with scripts/build.ps1 (or scripts/build.sh).{Environment.NewLine}"
             + $"Looked at:{Environment.NewLine}{DescribeCandidates()}",
             inner);
 

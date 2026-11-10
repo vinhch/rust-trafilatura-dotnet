@@ -72,7 +72,7 @@ fn payload_at_cap_is_accepted_and_one_byte_over_is_rejected() {
     let (code, json) = call(&one_over);
     assert_eq!(code, 2, "one byte over the cap must be rejected: {json:?}");
     let json = json.expect("code 2 writes an InvalidRequest envelope");
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2);
     assert_eq!(json["error"]["kind"], "InvalidRequest");
     let reason = json["error"]["context"]["reason"]
         .as_str()

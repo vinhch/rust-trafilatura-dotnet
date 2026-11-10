@@ -102,44 +102,13 @@ public sealed class ErrorTests
 
         // The other two shapes a failure can take: an envelope without an error object, and text that
         // is not JSON at all. Both still produce an exception rather than a JSON error nobody asked for.
-        Assert.Equal(TrafilaturaErrorKind.Unknown, Failures.Read(1, """{"schemaVersion":1}""").Kind);
+        Assert.Equal(TrafilaturaErrorKind.Unknown, Failures.Read(1, """{"schemaVersion":2}""").Kind);
         Assert.Equal(TrafilaturaErrorKind.Unknown, Failures.Read(1, "not json").Kind);
 
         // The parse failure itself is kept, so a library that answers with something unexpected can
         // still be diagnosed from the exception the caller caught. Parse reports JsonReaderException,
         // whose base is the JsonException the mapping catches.
         Assert.IsAssignableFrom<JsonException>(Failures.Read(1, "not json").InnerException);
-    }
-
-    /// <summary>
-    /// A budget expiry carries its own kind and its context names the budget that expired, so a
-    /// caller can treat it as its timeout and not as an extraction failure.
-    /// </summary>
-    [Fact]
-    public void TimeBudgetExceeded_Maps_To_Own_Kind()
-    {
-        var exception = Failures.Read(
-            1,
-            """{"schemaVersion":1,"error":{"kind":"TimeBudgetExceeded","message":"extraction exceeded the 50 ms time budget","context":{"budgetMs":50}}}""");
-
-        Assert.Equal(TrafilaturaErrorKind.TimeBudgetExceeded, exception.Kind);
-        Assert.Contains("budgetMs", exception.ContextJson, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// A full detached-worker pool carries its own kind with the limit in its context: it reports
-    /// that the process is saturated, which a caller must answer with backoff rather than with a
-    /// per-page timeout.
-    /// </summary>
-    [Fact]
-    public void WorkerCapExceeded_Maps_To_Own_Kind()
-    {
-        var exception = Failures.Read(
-            1,
-            """{"schemaVersion":1,"error":{"kind":"WorkerCapExceeded","message":"16 detached workers are already live","context":{"limit":16}}}""");
-
-        Assert.Equal(TrafilaturaErrorKind.WorkerCapExceeded, exception.Kind);
-        Assert.Contains("limit", exception.ContextJson, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -167,8 +136,6 @@ public sealed class ErrorTests
             "WrongLanguage",
             "InvalidUrl",
             "InvalidRequest",
-            "TimeBudgetExceeded",
-            "WorkerCapExceeded",
             "Panic",
             "Unknown",
         ];

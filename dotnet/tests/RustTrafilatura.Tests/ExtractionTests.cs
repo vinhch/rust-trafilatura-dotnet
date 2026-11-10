@@ -23,7 +23,7 @@ public sealed class ExtractionTests
     {
         var version = Extractor.LibraryVersion;
 
-        Assert.Equal(1, version.Abi);
+        Assert.Equal(2, version.Abi);
         // Read from rust/Cargo.toml and rust/Cargo.lock rather than repeated here: the assertion is that
         // the loaded library was built from the sources in this checkout, and a copy of either number
         // would go stale on the next bump instead of failing.
@@ -41,7 +41,7 @@ public sealed class ExtractionTests
     {
         var version = Extractor.LibraryVersion;
 
-        Assert.Equal(1, version.Abi);
-        Assert.Equal(1, version.SchemaVersion);
+        Assert.Equal(2, version.Abi);
+        Assert.Equal(2, version.SchemaVersion);
     }
 }

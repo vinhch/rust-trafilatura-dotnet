@@ -11,11 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 /// The only request header version this wrapper accepts.
-pub const SCHEMA_VERSION: u32 = 1;
-
-/// The largest accepted `timeBudgetMs`; `Instant + Duration` panics on overflow, so the
-/// ceiling keeps the deadline arithmetic inside `Instant`'s representable range.
-pub const MAX_BUDGET_MS: u64 = 1 << 32;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// A content field the caller can ask for, in `responseFields` wire order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,7 +24,7 @@ pub enum ResponseField {
 }
 
 impl ResponseField {
-    /// Wire name; `None` means the name is not part of schema version 1.
+    /// Wire name; `None` means the name is not part of schema version 2.
     fn parse(name: &str) -> Option<Self> {
         match name {
             "contentText" => Some(Self::ContentText),
@@ -48,7 +44,7 @@ const DEFAULT_RESPONSE_FIELDS: [ResponseField; 3] = [
     ResponseField::Metadata,
 ];
 
-/// The request header, schema version 1.
+/// The request header, schema version 2.
 ///
 /// `url` and `inputEncoding` live here rather than in `options`; every other option is a field
 /// of [`OptionsJson`]. Unknown keys are rejected at every level.
@@ -58,7 +54,6 @@ pub struct Header {
     pub schema_version: Option<u32>,
     pub url: Option<String>,
     pub input_encoding: Option<String>,
-    pub time_budget_ms: Option<u64>,
     pub options: Option<OptionsJson>,
     pub response_fields: Option<Vec<String>>,
 }
@@ -159,14 +154,6 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
     if let Some(url) = &header.url {
         if !url.is_empty() && !rust_trafilatura::url::is_absolute_url(url) {
             return Err(RequestError::InvalidUrl(url.clone()));
-        }
-    }
-
-    if let Some(budget) = header.time_budget_ms {
-        if budget == 0 || budget > MAX_BUDGET_MS {
-            return Err(RequestError::InvalidRequest(format!(
-                "timeBudgetMs must be 1..={MAX_BUDGET_MS} milliseconds, got {budget}"
-            )));
         }
     }
 
@@ -335,13 +322,13 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_other_than_one_is_rejected() {
-        assert!(parse_request(br#"{"schemaVersion":1}"#).is_ok());
+    fn schema_version_other_than_two_is_rejected() {
+        assert!(parse_request(br#"{"schemaVersion":2}"#).is_ok());
         for header in [
             &br#"{"schemaVersion":0}"#[..],
-            &br#"{"schemaVersion":2}"#[..],
-            &br#"{"schemaVersion":"1"}"#[..],
-            &br#"{"schemaVersion":1.0}"#[..],
+            &br#"{"schemaVersion":3}"#[..],
+            &br#"{"schemaVersion":"2"}"#[..],
+            &br#"{"schemaVersion":3.0}"#[..],
             &br#"{"schemaVersion":-1}"#[..],
         ] {
             assert!(
@@ -398,7 +385,7 @@ mod tests {
     #[test]
     fn options_round_trip_every_wire_key() {
         let header = br#"{
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "url": "https://example.org/article",
             "inputEncoding": "windows-1252",
             "options": {
@@ -496,43 +483,11 @@ mod tests {
     }
 
     #[test]
-    fn time_budget_is_parsed_from_the_wire_key() {
-        let request = parse_request(br#"{"timeBudgetMs":5000}"#).unwrap();
-        assert_eq!(request.header.time_budget_ms, Some(5000));
-    }
-
-    #[test]
-    fn time_budget_zero_is_rejected() {
-        match parse_request(br#"{"timeBudgetMs":0}"#) {
-            Err(RequestError::InvalidRequest(reason)) => {
-                assert!(reason.contains("timeBudgetMs"), "{reason:?}");
-                assert!(reason.contains("1"), "{reason:?}");
-                assert!(reason.contains("4294967296"), "{reason:?}");
-            }
-            other => panic!("zero budget must be rejected, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn time_budget_above_the_ceiling_is_rejected() {
-        match parse_request(br#"{"timeBudgetMs":4294967297}"#) {
-            Err(RequestError::InvalidRequest(reason)) => {
-                assert!(reason.contains("4294967296"), "{reason:?}");
-            }
-            other => panic!("overlarge budget must be rejected, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn time_budget_at_the_ceiling_is_accepted() {
-        let request = parse_request(br#"{"timeBudgetMs":4294967296}"#).unwrap();
-        assert_eq!(request.header.time_budget_ms, Some(MAX_BUDGET_MS));
-    }
-
-    #[test]
-    fn time_budget_absent_is_none() {
-        let request = parse_request(br#"{}"#).unwrap();
-        assert_eq!(request.header.time_budget_ms, None);
+    fn time_budget_key_is_an_unknown_header_key() {
+        assert!(matches!(
+            parse_request(br#"{"timeBudgetMs":100}"#),
+            Err(RequestError::InvalidRequest(_))
+        ));
     }
 
     #[test]

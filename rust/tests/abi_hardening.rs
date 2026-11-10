@@ -31,7 +31,7 @@ const TEXT_ONLY: &[u8] = br#"{"responseFields":["contentText"]}"#;
 /// The refusal reason of an `InvalidRequest` envelope, which is what code 2 carries when a guard
 /// rejected the request rather than a null out-parameter.
 fn rejection_reason(json: &Value) -> String {
-    assert_eq!(json["schemaVersion"], 1, "{json}");
+    assert_eq!(json["schemaVersion"], 2, "{json}");
     assert_eq!(json["error"]["kind"], "InvalidRequest", "{json}");
     json["error"]["context"]["reason"]
         .as_str()
@@ -158,7 +158,7 @@ fn thousand_level_nesting_returns_on_default_stack() {
         "1000 levels must return a result, not a fallback: code {code}"
     );
     let json = json.expect("code 0 or 1 writes the response");
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2);
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn garbage_requests_never_panic() {
             "round {round}: code {code} is outside the ABI"
         );
         let json = json.expect("every return code writes a caller-owned buffer");
-        assert_eq!(json["schemaVersion"], 1, "round {round}: {json}");
+        assert_eq!(json["schemaVersion"], 2, "round {round}: {json}");
 
         // The same bytes as the payload, under a header the contract accepts, so the core decodes
         // and parses them instead of the wrapper rejecting the request first.
@@ -182,7 +182,7 @@ fn garbage_requests_never_panic() {
             "round {round}: a valid header with a garbage payload must reach the core, got code {code}"
         );
         let json = json.expect("every return code writes a caller-owned buffer");
-        assert_eq!(json["schemaVersion"], 1, "round {round}: {json}");
+        assert_eq!(json["schemaVersion"], 2, "round {round}: {json}");
         if code == 1 {
             assert_ne!(
                 json["error"]["kind"], "InvalidRequest",
@@ -264,7 +264,7 @@ fn empty_payload_returns_error_not_panic() {
     let (code, json) = call(TEXT_ONLY, &[]);
     assert_eq!(code, 1, "zero-length input is the core's own error");
     let json = json.expect("code 1 writes the error envelope");
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2);
     assert_eq!(json["error"]["kind"], "OutputTooShort", "{json}");
     assert_eq!(json["contentText"], "", "{json}");
 }
@@ -316,7 +316,7 @@ fn panic_is_caught() {
     assert_eq!(code, 3, "a panic must become a return code, not an unwind");
 
     let json = take_json(out, len, cap).expect("code 3 writes the Panic envelope");
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2);
     assert_eq!(json["error"]["kind"], "Panic", "{json}");
     let message = json["error"]["context"]["message"]
         .as_str()

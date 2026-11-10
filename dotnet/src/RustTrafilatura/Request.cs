@@ -22,7 +22,6 @@ internal static class Request
                 ResponseFields = options?.ResponseFields,
                 Url = options?.Url,
                 InputEncoding = options?.InputEncoding,
-                TimeBudgetMs = options?.TimeBudgetMs,
                 Options = options,
             },
             HeaderContext.Default.RequestHeader);

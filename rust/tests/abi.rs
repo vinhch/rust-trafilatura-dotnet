@@ -83,7 +83,7 @@ fn invalid_url_returns_invalid_url() {
         let (code, json) = extract(header.as_bytes(), HTML.as_bytes());
         assert_eq!(code, 1, "{url} must be an extraction error");
         let json = json.expect("code 1 writes the InvalidUrl envelope the caller owns");
-        assert_eq!(json["schemaVersion"], 1, "{url}");
+        assert_eq!(json["schemaVersion"], 2, "{url}");
         assert_eq!(json["error"]["kind"], "InvalidUrl", "{url}");
         assert_eq!(json["error"]["context"]["url"], url, "{url}");
         assert_failure_envelope_is_empty(&json, url);
@@ -95,13 +95,13 @@ fn malformed_headers_return_invalid_request() {
     for header in [
         &br#"[]"#[..],
         &br#"{"unknownKey":true}"#[..],
-        &br#"{"schemaVersion":2}"#[..],
+        &br#"{"schemaVersion":3}"#[..],
         &br#"{"responseFields":[]}"#[..],
     ] {
         let (code, json) = extract(header, HTML.as_bytes());
         assert_eq!(code, 2, "{header:?} must be an invalid request");
         let json = json.expect("code 2 writes an InvalidRequest envelope the caller owns");
-        assert_eq!(json["schemaVersion"], 1, "{header:?}");
+        assert_eq!(json["schemaVersion"], 2, "{header:?}");
         assert_eq!(json["error"]["kind"], "InvalidRequest", "{header:?}");
         assert!(
             json["error"]["context"]["reason"].is_string(),
@@ -122,7 +122,7 @@ fn rt_version_reports_abi_schema_crate_and_core() {
     assert_eq!(
         text,
         format!(
-            r#"{{"abi":1,"schemaVersion":1,"crate":"{}","core":"{}"}}"#,
+            r#"{{"abi":2,"schemaVersion":2,"crate":"{}","core":"{}"}}"#,
             env!("CARGO_PKG_VERSION"),
             env!("RT_CORE_VERSION")
         )

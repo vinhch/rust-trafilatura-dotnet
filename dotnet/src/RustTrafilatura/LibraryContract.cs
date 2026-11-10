@@ -9,10 +9,10 @@ namespace RustTrafilatura;
 internal static class LibraryContract
 {
     /// <summary>The `abi` and the JSON schema this assembly was compiled for; a library that reports other numbers is read with the wrong contract.</summary>
-    private const int RequiredAbi = 1;
+    private const int RequiredAbi = 2;
 
     /// <summary>The other half of <see cref="RequiredAbi"/>: the schema version of the response this client parses.</summary>
-    private const int RequiredSchemaVersion = 1;
+    private const int RequiredSchemaVersion = 2;
 
     private static readonly Lazy<string> VersionDocument = new(() =>
     {

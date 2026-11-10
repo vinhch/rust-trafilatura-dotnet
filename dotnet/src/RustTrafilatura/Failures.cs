@@ -66,8 +66,6 @@ internal static class Failures
         "WrongLanguage" => TrafilaturaErrorKind.WrongLanguage,
         "InvalidUrl" => TrafilaturaErrorKind.InvalidUrl,
         "InvalidRequest" => TrafilaturaErrorKind.InvalidRequest,
-        "TimeBudgetExceeded" => TrafilaturaErrorKind.TimeBudgetExceeded,
-        "WorkerCapExceeded" => TrafilaturaErrorKind.WorkerCapExceeded,
         "Panic" => TrafilaturaErrorKind.Panic,
         _ => TrafilaturaErrorKind.Unknown,
     };

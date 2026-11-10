@@ -108,15 +108,13 @@ internal sealed class HtmlDateModeConverter : JsonConverter<HtmlDateMode>
 /// </summary>
 internal sealed class RequestHeader
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
 
     public string? Url { get; init; }
 
     public string? InputEncoding { get; init; }
 
     public List<string>? ResponseFields { get; init; }
-
-    public long? TimeBudgetMs { get; init; }
 
     public ExtractionOptions? Options { get; init; }
 }

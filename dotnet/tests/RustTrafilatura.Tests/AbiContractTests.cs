@@ -26,14 +26,14 @@ public sealed class AbiContractTests
     public void Abi_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            LibraryContract.Check("""{"abi":2,"schemaVersion":1,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":3,"schemaVersion":2,"crate":"0.0.1"}"""));
 
-        Assert.Equal(1, mismatch.ExpectedAbi);
-        Assert.Equal(2, mismatch.ActualAbi);
-        Assert.Equal(1, mismatch.ExpectedSchemaVersion);
-        Assert.Equal(1, mismatch.ActualSchemaVersion);
-        Assert.Contains("reports abi 2 and schemaVersion 1", mismatch.Message, StringComparison.Ordinal);
-        Assert.Contains("requires abi 1 and schemaVersion 1", mismatch.Message, StringComparison.Ordinal);
+        Assert.Equal(2, mismatch.ExpectedAbi);
+        Assert.Equal(3, mismatch.ActualAbi);
+        Assert.Equal(2, mismatch.ExpectedSchemaVersion);
+        Assert.Equal(2, mismatch.ActualSchemaVersion);
+        Assert.Contains("reports abi 3 and schemaVersion 2", mismatch.Message, StringComparison.Ordinal);
+        Assert.Contains("requires abi 2 and schemaVersion 2", mismatch.Message, StringComparison.Ordinal);
         AssertNamesTheFix(mismatch);
     }
 
@@ -42,14 +42,14 @@ public sealed class AbiContractTests
     public void Schema_Version_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            LibraryContract.Check("""{"abi":1,"schemaVersion":2,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":2,"schemaVersion":3,"crate":"0.0.1"}"""));
 
-        Assert.Equal(1, mismatch.ExpectedAbi);
-        Assert.Equal(1, mismatch.ActualAbi);
-        Assert.Equal(1, mismatch.ExpectedSchemaVersion);
-        Assert.Equal(2, mismatch.ActualSchemaVersion);
-        Assert.Contains("reports abi 1 and schemaVersion 2", mismatch.Message, StringComparison.Ordinal);
-        Assert.Contains("requires abi 1 and schemaVersion 1", mismatch.Message, StringComparison.Ordinal);
+        Assert.Equal(2, mismatch.ExpectedAbi);
+        Assert.Equal(2, mismatch.ActualAbi);
+        Assert.Equal(2, mismatch.ExpectedSchemaVersion);
+        Assert.Equal(3, mismatch.ActualSchemaVersion);
+        Assert.Contains("reports abi 2 and schemaVersion 3", mismatch.Message, StringComparison.Ordinal);
+        Assert.Contains("requires abi 2 and schemaVersion 2", mismatch.Message, StringComparison.Ordinal);
         AssertNamesTheFix(mismatch);
     }
 
@@ -58,14 +58,14 @@ public sealed class AbiContractTests
     public void Both_Values_Mismatch_Is_Reported_With_Both_Sides()
     {
         var mismatch = Assert.IsType<ContractVersionMismatchException>(
-            LibraryContract.Check("""{"abi":2,"schemaVersion":3,"crate":"0.0.1"}"""));
+            LibraryContract.Check("""{"abi":3,"schemaVersion":3,"crate":"0.0.1"}"""));
 
-        Assert.Equal(1, mismatch.ExpectedAbi);
-        Assert.Equal(2, mismatch.ActualAbi);
-        Assert.Equal(1, mismatch.ExpectedSchemaVersion);
+        Assert.Equal(2, mismatch.ExpectedAbi);
+        Assert.Equal(3, mismatch.ActualAbi);
+        Assert.Equal(2, mismatch.ExpectedSchemaVersion);
         Assert.Equal(3, mismatch.ActualSchemaVersion);
-        Assert.Contains("reports abi 2 and schemaVersion 3", mismatch.Message, StringComparison.Ordinal);
-        Assert.Contains("requires abi 1 and schemaVersion 1", mismatch.Message, StringComparison.Ordinal);
+        Assert.Contains("reports abi 3 and schemaVersion 3", mismatch.Message, StringComparison.Ordinal);
+        Assert.Contains("requires abi 2 and schemaVersion 2", mismatch.Message, StringComparison.Ordinal);
         AssertNamesTheFix(mismatch);
     }
 
@@ -75,7 +75,7 @@ public sealed class AbiContractTests
     /// </summary>
     [Fact]
     public void Crate_Version_Is_Not_Compared() =>
-        Assert.Null(LibraryContract.Check("""{"abi":1,"schemaVersion":1,"crate":"9.9.9"}"""));
+        Assert.Null(LibraryContract.Check("""{"abi":2,"schemaVersion":2,"crate":"9.9.9"}"""));
 
     /// <summary>
     /// A document that states no contract version cannot pass: text that is not JSON, a document with
@@ -89,16 +89,16 @@ public sealed class AbiContractTests
         [
             "not json",
             """{"crate":"0.0.1"}""",
-            """{"abi":"1","schemaVersion":"1"}""",
+            """{"abi":"2","schemaVersion":"2"}""",
         ];
 
         foreach (var document in documents)
         {
             var mismatch = Assert.IsType<ContractVersionMismatchException>(LibraryContract.Check(document));
 
-            Assert.Equal(1, mismatch.ExpectedAbi);
+            Assert.Equal(2, mismatch.ExpectedAbi);
             Assert.Null(mismatch.ActualAbi);
-            Assert.Equal(1, mismatch.ExpectedSchemaVersion);
+            Assert.Equal(2, mismatch.ExpectedSchemaVersion);
             Assert.Null(mismatch.ActualSchemaVersion);
             Assert.Contains(
                 "reports abi (not reported) and schemaVersion (not reported)",
@@ -124,9 +124,9 @@ public sealed class AbiContractTests
         var mismatch = Assert.Throws<ContractVersionMismatchException>(
             () => LibraryContract.ReadDocument(2, string.Empty));
 
-        Assert.Equal(1, mismatch.ExpectedAbi);
+        Assert.Equal(2, mismatch.ExpectedAbi);
         Assert.Null(mismatch.ActualAbi);
-        Assert.Equal(1, mismatch.ExpectedSchemaVersion);
+        Assert.Equal(2, mismatch.ExpectedSchemaVersion);
         Assert.Null(mismatch.ActualSchemaVersion);
         Assert.Contains(
             "reports abi (not reported) and schemaVersion (not reported)",
