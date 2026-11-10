@@ -10,22 +10,13 @@ namespace RustTrafilatura.Tests;
 /// </summary>
 public sealed class ErrorTests
 {
-    /// <summary>
-    /// A URL the core rejects as its own input. The core validates it before extraction, so the
-    /// failure is an extraction error (code 1) rather than a rejected request.
-    /// </summary>
+    /// <summary>A `Url` that is not an absolute URL is passed through: the core ignores a value it cannot parse.</summary>
     [Fact]
-    public void InvalidUrl_Throws_TrafilaturaException()
+    public void Non_Url_Value_Extracts()
     {
-        var exception = Assert.Throws<TrafilaturaException>(() =>
-            Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { Url = "ftp://example.org/a" }));
+        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { Url = "not a url" });
 
-        Assert.Equal(TrafilaturaErrorKind.InvalidUrl, exception.Kind);
-
-        // A payload-carrying kind brings its context along, and it names the caller's own URL.
-        using var context = JsonDocument.Parse(exception.ContextJson!);
-        Assert.Equal("ftp://example.org/a", context.RootElement.GetProperty("url").GetString());
-        Assert.Contains("ftp://example.org/a", exception.Message, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrEmpty(result.ContentText));
     }
 
     /// <summary>
@@ -134,7 +125,6 @@ public sealed class ErrorTests
             "OutputTooShort",
             "DuplicateBody",
             "WrongLanguage",
-            "InvalidUrl",
             "InvalidRequest",
             "Panic",
             "Unknown",

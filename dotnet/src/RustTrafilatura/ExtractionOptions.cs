@@ -74,8 +74,8 @@ public sealed class ExtractionConfig
 public sealed class ExtractionOptions
 {
     /// <summary>
-    /// The absolute `http`/`https` URL the page was fetched from, or null for "no URL". The extraction
-    /// uses it for the metadata this document cannot carry itself, and any other value is rejected.
+    /// The URL the page was fetched from, or null or an empty string for "no URL". The extraction
+    /// uses it for the metadata this document cannot carry itself, and any string is passed through.
     /// This is a header key rather than an option, which is why it is not serialized here.
     /// </summary>
     [JsonIgnore]
@@ -109,7 +109,7 @@ public sealed class ExtractionOptions
     /// <summary>Whether to keep links. Null is the core's default of false.</summary>
     public bool? IncludeLinks { get; set; }
 
-    /// <summary>Authors whose documents are rejected, or null for the core's default of none.</summary>
+    /// <summary>Authors dropped from the metadata when they match, or null for the core's default of none. The document is not rejected.</summary>
     public List<string>? BlacklistedAuthors { get; set; }
 
     /// <summary>Whether a document without essential metadata is rejected. Null is the core's default of false.</summary>

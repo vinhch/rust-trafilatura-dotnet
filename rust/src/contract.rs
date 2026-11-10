@@ -110,20 +110,17 @@ pub struct Request {
 
 /// Why a request header was rejected before the core ran.
 ///
-/// `InvalidRequest` carries the reason for the ABI's `{"reason": ...}` context; `InvalidUrl`
-/// carries the caller's own URL for its `{"url": ...}` context.
+/// `InvalidRequest` carries the reason for the ABI's `{"reason": ...}` context.
 #[derive(Debug, Eq, PartialEq)]
 pub enum RequestError {
     InvalidRequest(String),
-    InvalidUrl(String),
 }
 
 /// Parses and validates a request header.
 ///
 /// A missing (empty slice), non-UTF-8, malformed or non-object header is an `InvalidRequest`,
 /// as are unknown keys, a `schemaVersion` other than [`SCHEMA_VERSION`], and an empty or unknown
-/// `responseFields` entry. A non-empty `url` that is not an absolute `http`/`https` URL is an
-/// `InvalidUrl`.
+/// `responseFields` entry.
 pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
     let text = std::str::from_utf8(header)
         .map_err(|error| RequestError::InvalidRequest(format!("header is not UTF-8: {error}")))?;
@@ -135,12 +132,6 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
             return Err(RequestError::InvalidRequest(format!(
                 "unsupported schemaVersion {version}, expected {SCHEMA_VERSION}"
             )));
-        }
-    }
-
-    if let Some(url) = &header.url {
-        if !url.is_empty() && !rust_trafilatura::url::is_absolute_url(url) {
-            return Err(RequestError::InvalidUrl(url.clone()));
         }
     }
 
@@ -234,18 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn scheme_is_checked_case_insensitively() {
-        assert!(parse_request(br#"{"url":"ftp://example.org/a"}"#).is_err());
-        assert!(parse_request(br#"{"url":"mailto:a@example.org"}"#).is_err());
-        assert!(parse_request(br#"{"url":"HTTPS://Example.ORG/a"}"#).is_ok());
-    }
-
-    #[test]
     fn request_errors_name_their_cause() {
-        assert!(matches!(
-            parse_request(br#"{"url":"ftp://example.org/a"}"#),
-            Err(RequestError::InvalidUrl(url)) if url == "ftp://example.org/a"
-        ));
         assert!(matches!(
             parse_request(b"{"),
             Err(RequestError::InvalidRequest(reason)) if !reason.is_empty()

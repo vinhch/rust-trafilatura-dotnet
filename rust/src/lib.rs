@@ -82,7 +82,7 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 
 /// Extracts from a raw payload and returns the response JSON.
 ///
-/// Return codes: `0` success, `1` extraction error (an `InvalidUrl` header or a core error),
+/// Return codes: `0` success, `1` extraction error (a core error),
 /// `2` invalid request, `3` a caught panic. Code `2` has two cases: a null `out`, `out_len` or
 /// `out_cap` writes nothing, while a rejected request writes an `InvalidRequest` envelope. Every
 /// code that writes a buffer (`0`, `1`, `3`, and `2` when the request was rejected) hands the
@@ -304,29 +304,15 @@ fn check_input(
     Ok(())
 }
 
-/// The return code and envelope for a header the contract rejected.
-///
-/// `InvalidUrl` is an extraction error (code 1) because the URL is the core's own input, and the
-/// design fixes that mapping; everything else the header can get wrong is an `InvalidRequest`
+/// The return code and envelope for a header the contract rejected: always an `InvalidRequest`
 /// (code 2).
 fn request_error(error: RequestError) -> (i32, Vec<u8>) {
-    match error {
-        RequestError::InvalidRequest(reason) => {
-            let context = json!({ "reason": reason.clone() });
-            (
-                CODE_INVALID_REQUEST,
-                encode(&error_response("InvalidRequest", reason, Some(context))),
-            )
-        }
-        RequestError::InvalidUrl(url) => {
-            let context = json!({ "url": url.clone() });
-            let message = format!("url is not an absolute http or https URL: {url}");
-            (
-                CODE_EXTRACTION_ERROR,
-                encode(&error_response("InvalidUrl", message, Some(context))),
-            )
-        }
-    }
+    let RequestError::InvalidRequest(reason) = error;
+    let context = json!({ "reason": reason.clone() });
+    (
+        CODE_INVALID_REQUEST,
+        encode(&error_response("InvalidRequest", reason, Some(context))),
+    )
 }
 
 /// Runs the extraction on a thread with the configured stack size.

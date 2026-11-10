@@ -92,7 +92,7 @@ public sealed class OptionsTests
         Assert.Contains("Z\u00FCrich", result.ContentText);
     }
 
-    /// <summary>`url` is a header key that reaches the metadata, and the core validates it.</summary>
+    /// <summary>`url` is a header key that reaches the metadata.</summary>
     [Fact]
     public void Url_Reaches_The_Metadata()
     {

@@ -71,17 +71,17 @@ fn round_trip_returns_text_and_frees() {
 }
 
 #[test]
-fn invalid_url_returns_invalid_url() {
-    for url in ["ftp://example.org/a", "mailto:a@example.org"] {
-        let header = format!(r#"{{"url":"{url}"}}"#);
-        let (code, json) = extract(header.as_bytes(), HTML.as_bytes());
-        assert_eq!(code, 1, "{url} must be an extraction error");
-        let json = json.expect("code 1 writes the InvalidUrl envelope the caller owns");
-        assert_eq!(json["schemaVersion"], 2, "{url}");
-        assert_eq!(json["error"]["kind"], "InvalidUrl", "{url}");
-        assert_eq!(json["error"]["context"]["url"], url, "{url}");
-        assert_failure_envelope_is_empty(&json, url);
-    }
+fn non_url_value_extracts() {
+    let (code, json) = extract(br#"{"schemaVersion":2,"url":"not a url"}"#, HTML.as_bytes());
+    assert_eq!(
+        code, 0,
+        "a url the core cannot parse must not fail the call: {json:?}"
+    );
+    let json = json.expect("code 0 returns a buffer");
+    assert!(!json["contentText"]
+        .as_str()
+        .expect("contentText is a string")
+        .is_empty());
 }
 
 #[test]

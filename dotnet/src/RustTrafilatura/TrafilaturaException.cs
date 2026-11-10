@@ -17,7 +17,6 @@ public enum TrafilaturaErrorKind
     OutputTooShort,
     DuplicateBody,
     WrongLanguage,
-    InvalidUrl,
     InvalidRequest,
     Panic,
 

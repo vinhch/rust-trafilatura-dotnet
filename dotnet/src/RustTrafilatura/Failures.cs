@@ -64,7 +64,6 @@ internal static class Failures
         "OutputTooShort" => TrafilaturaErrorKind.OutputTooShort,
         "DuplicateBody" => TrafilaturaErrorKind.DuplicateBody,
         "WrongLanguage" => TrafilaturaErrorKind.WrongLanguage,
-        "InvalidUrl" => TrafilaturaErrorKind.InvalidUrl,
         "InvalidRequest" => TrafilaturaErrorKind.InvalidRequest,
         "Panic" => TrafilaturaErrorKind.Panic,
         _ => TrafilaturaErrorKind.Unknown,

@@ -219,15 +219,15 @@ public sealed class ResponseTests
     [Fact]
     public void A_Failing_Extraction_Still_Frees_The_Response_Buffer()
     {
-        // The URL is one the core rejects, so this is an extraction error whose envelope the reader
+        // An empty page is an extraction error whose envelope the reader
         // has to parse before it throws.
-        var rejected = new ExtractionOptions { Url = "ftp://example.org/a" };
+        var emptyPage = Array.Empty<byte>();
 
         for (var attempt = 0; attempt < 100; attempt++)
         {
             var failure = Assert.Throws<TrafilaturaException>(
-                () => Extractor.ExtractFromBytes(Fixtures.Article, rejected));
-            Assert.Equal(TrafilaturaErrorKind.InvalidUrl, failure.Kind);
+                () => Extractor.ExtractFromBytes(emptyPage));
+            Assert.Equal(TrafilaturaErrorKind.OutputTooShort, failure.Kind);
 
             var result = Extractor.ExtractFromBytes(Fixtures.Article, AllFields);
             Assert.Equal("Research results", result.Metadata!.Title);

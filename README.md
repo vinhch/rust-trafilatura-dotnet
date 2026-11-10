@@ -68,14 +68,14 @@ native library applies its own default rather than a value this package invented
 | Option | Default | Effect |
 | --- | --- | --- |
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is left out of the response and is null in the result |
-| `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
+| `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry; any string is passed through and an empty string means none |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
 | `ExcludeComments` | false | Whether to drop the page's comments |
 | `ExcludeTables` | false | Whether to drop tables |
 | `IncludeImages` | false | Whether to keep image references |
 | `IncludeLinks` | false | Whether to keep links |
-| `BlacklistedAuthors` | none | Authors whose documents are rejected |
+| `BlacklistedAuthors` | none | Authors dropped from the metadata when they match; the document is not rejected |
 | `HasEssentialMetadata` | false | Whether a document without essential metadata is rejected |
 | `MaxTreeSize` | 0 | An upper bound on the extracted tree's direct children; 0 means no limit |
 | `HtmlDateMode` | `Default` | How hard to look for a date, out of `Default`, `Fast` and `Extensive` |
@@ -141,7 +141,6 @@ Note: a member the request did not name is null; one it named that the page has 
 | `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
 | `DuplicateBody` | the core reports the content as a duplicate; no option here turns deduplication on | |
-| `InvalidUrl` | `Url` is not an absolute `http`/`https` URL | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
 | `Unknown` | the library reported a kind this client version does not recognise | |
