@@ -3,7 +3,8 @@
 Reference for the wire contract between the native library (`rust/`) and the managed client
 (`dotnet/src/RustTrafilatura/`). Each section names the type or constant that owns the fact; values
 live there and are not repeated here. Building and staging the library is in
-[development.md](development.md).
+[development.md](development.md); which files change together when one of these facts changes is
+the "Change together" table in [AGENTS.md](../AGENTS.md).
 
 ## Call path
 

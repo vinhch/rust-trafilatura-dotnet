@@ -70,7 +70,7 @@ pub fn build(request: &Request, payload: &[u8]) -> Response {
 
 /// Extracts from HTML the caller already decoded, on the same pipeline as [`build`].
 ///
-/// It encodes to UTF-8 and delegates, as the design requires of `ExtractFromHtml` (section 8):
+/// It encodes to UTF-8 and delegates, as the README documents for `ExtractFromHtml`:
 /// the byte path detects the charset and normalizes the text (NFC, soft hyphens dropped), so a
 /// caller that skipped it would not see the same result for the same text.
 pub fn build_from_html(request: &Request, html: &str) -> Response {

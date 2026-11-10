@@ -12,7 +12,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Turns the trim and AOT analyzers on for every project here, so what the package tells a
          publishing consumer is checkable rather than asserted: the AOT job in
-         .github/workflows/ci.yml promotes IL2026 and IL3050 to errors, and a reflection-based path
+         .github/workflows/_ci.yml promotes IL2026 and IL3050 to errors, and a reflection-based path
          added later fails that job instead of failing a consumer's publish. -->
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>

@@ -48,7 +48,7 @@ fn take_json(out: *mut u8, len: usize, cap: usize) -> Option<Value> {
 ///
 /// The key must be there as well as be null. `Value`'s index returns `Null` for an absent key, so an
 /// assertion on the value alone cannot tell a documented null from a key that serialization
-/// dropped, which is what section 6's shape stability claim rests on.
+/// dropped, which is what the "every key is always serialized" promise on `engine::Response` rests on.
 fn assert_failure_envelope_is_empty(json: &Value, case: &str) {
     for key in ["contentText", "commentsText", "metadata"] {
         assert!(

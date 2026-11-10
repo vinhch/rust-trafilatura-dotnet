@@ -75,7 +75,7 @@ fn main() {
     assert_eq!(
         payload.len(),
         FIXTURE_LEN,
-        "the fixture generator changed: update FIXTURE_LEN and the fixture size in the spec"
+        "the fixture generator changed: update FIXTURE_LEN and FixtureLength in dotnet/tools/AllocProbe/Program.cs"
     );
 
     let core = rust_trafilatura::extract(payload, &options).expect("the fixture must extract");

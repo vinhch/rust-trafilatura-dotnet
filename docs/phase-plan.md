@@ -4,7 +4,8 @@ This plan is the durable record of what the binding ships next and the items sti
 
 How the plan is kept:
 
-- A phase runs its own brainstorm and design gate before code. Design specs and implementation plans are working files under `.superpowers/` (not tracked); once a design is approved, the decisions that outlive the phase move into the README and the pages under `docs/`.
+- A phase runs its own brainstorm and design gate before code. Design specs and implementation plans are working files under `.superpowers/` (not tracked); once a design is approved, the decisions that outlive the phase move into the README, the pages under `docs/` and `AGENTS.md`.
+- A phase closes only when the docs check in `docs/development.md` exits 0.
 - A row moves from Remaining to Shipped when its done-when criteria hold, citing the commit range or tag.
 - A register row leaves the register when it closes. Ids are never reused: `OI-n` for open items, `F-n` for followups.
 - A citation of this plan names an id or a heading, never a line.
