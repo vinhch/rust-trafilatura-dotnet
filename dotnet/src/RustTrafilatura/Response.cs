@@ -29,8 +29,6 @@ internal static class Response
 
         string? contentText = null;
         string? commentsText = null;
-        string? contentHtml = null;
-        string? commentsHtml = null;
         Metadata? metadata = null;
 
         var reader = new Utf8JsonReader(response);
@@ -65,16 +63,6 @@ internal static class Response
                 reader.Read();
                 commentsText = ReadStringValue(ref reader);
             }
-            else if (reader.ValueTextEquals("contentHtml"u8))
-            {
-                reader.Read();
-                contentHtml = ReadStringValue(ref reader);
-            }
-            else if (reader.ValueTextEquals("commentsHtml"u8))
-            {
-                reader.Read();
-                commentsHtml = ReadStringValue(ref reader);
-            }
             else if (reader.ValueTextEquals("metadata"u8))
             {
                 reader.Read();
@@ -96,8 +84,6 @@ internal static class Response
         {
             ContentText = contentText,
             CommentsText = commentsText,
-            ContentHtml = contentHtml,
-            CommentsHtml = commentsHtml,
             Metadata = metadata,
         };
     }
@@ -123,8 +109,6 @@ internal static class Response
         DateTimeOffset? date = null;
         IReadOnlyList<string> categories = Array.Empty<string>();
         IReadOnlyList<string> tags = Array.Empty<string>();
-        var id = string.Empty;
-        var fingerprint = string.Empty;
         var license = string.Empty;
         var language = string.Empty;
         var image = string.Empty;
@@ -184,16 +168,6 @@ internal static class Response
                 reader.Read();
                 tags = ReadStringArray(ref reader);
             }
-            else if (reader.ValueTextEquals("id"u8))
-            {
-                reader.Read();
-                id = ReadStringValue(ref reader) ?? string.Empty;
-            }
-            else if (reader.ValueTextEquals("fingerprint"u8))
-            {
-                reader.Read();
-                fingerprint = ReadStringValue(ref reader) ?? string.Empty;
-            }
             else if (reader.ValueTextEquals("license"u8))
             {
                 reader.Read();
@@ -232,8 +206,6 @@ internal static class Response
             Date = date,
             Categories = categories,
             Tags = tags,
-            Id = id,
-            Fingerprint = fingerprint,
             License = license,
             Language = language,
             Image = image,

@@ -139,7 +139,7 @@ public sealed class BytesTests
     /// <summary>Every response field is requested, so a member the reader left at its default shows up.</summary>
     private static ExtractionOptions AllFields => new()
     {
-        ResponseFields = ["contentText", "commentsText", "contentHtml", "commentsHtml", "metadata"],
+        ResponseFields = ["contentText", "commentsText", "metadata"],
     };
 
     /// <summary>
@@ -151,7 +151,6 @@ public sealed class BytesTests
     {
         Assert.Equal("Research results", result.Metadata!.Title);
         Assert.NotEmpty(result.ContentText!);
-        Assert.NotNull(result.ContentHtml);
         return result;
     }
 
@@ -159,8 +158,6 @@ public sealed class BytesTests
     {
         Assert.Equal(expected.ContentText, actual.ContentText);
         Assert.Equal(expected.CommentsText, actual.CommentsText);
-        Assert.Equal(expected.ContentHtml, actual.ContentHtml);
-        Assert.Equal(expected.CommentsHtml, actual.CommentsHtml);
         Assert.Equal(expected.Metadata!.Title, actual.Metadata!.Title);
         Assert.Equal(expected.Metadata.Author, actual.Metadata.Author);
         Assert.Equal(expected.Metadata.Url, actual.Metadata.Url);
@@ -170,8 +167,6 @@ public sealed class BytesTests
         Assert.Equal(expected.Metadata.Date, actual.Metadata.Date);
         Assert.Equal(expected.Metadata.Categories, actual.Metadata.Categories);
         Assert.Equal(expected.Metadata.Tags, actual.Metadata.Tags);
-        Assert.Equal(expected.Metadata.Id, actual.Metadata.Id);
-        Assert.Equal(expected.Metadata.Fingerprint, actual.Metadata.Fingerprint);
         Assert.Equal(expected.Metadata.License, actual.Metadata.License);
         Assert.Equal(expected.Metadata.Language, actual.Metadata.Language);
         Assert.Equal(expected.Metadata.Image, actual.Metadata.Image);

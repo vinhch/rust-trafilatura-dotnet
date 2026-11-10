@@ -433,8 +433,6 @@ fn error_response(kind: &str, message: String, context: Option<Value>) -> Respon
         schema_version: SCHEMA_VERSION,
         content_text: None,
         comments_text: None,
-        content_html: None,
-        comments_html: None,
         metadata: None,
         error: Some(ErrorEnvelope {
             kind: kind.to_owned(),

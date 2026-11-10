@@ -3,23 +3,18 @@
 //! `harness = false`, so this is a plain `fn main` timed with `std::time::Instant`: a bench framework
 //! would add a dependency to a crate whose point is a small dependency tree.
 //!
-//! Three paths, one fixture, one pinned option set:
+//! Two paths, one fixture, one pinned option set:
 //!
 //! - `core`: `rust_trafilatura::extract(payload, &options)`, which is what `rt_extract` calls
 //!   internally.
 //! - `roundtrip`: `rt_extract` plus `rt_free` with the default `responseFields`
 //!   (`contentText`, `commentsText`, `metadata`).
-//! - `roundtripHtml`: the same round trip with `contentHtml` added, the opt-in D11 keeps off by
-//!   default.
 //!
-//! `roundtrip/core` is the budget gate: the round trip must stay
-//! within 1.5x the direct call. `roundtripHtml/core` is printed but not gated, because the direct
-//! call never serializes the extracted tree: that ratio covers the requested `contentHtml` work as
-//! well as the wrapper, so gating it would gate the option rather than the ABI.
+//! `roundtrip/core` is the budget gate: the round trip must stay within 1.5x the direct call.
 //!
 //! The paths are measured in rotated rounds rather than one after another. A machine's throughput
 //! drifts during a run — this one measured about 10% between its first seconds and its steady state
-//! — and three consecutive measurements would hand the last path an advantage of the same order as
+//! — and two consecutive measurements would hand the last path an advantage of the same order as
 //! the overhead being measured.
 
 use rust_trafilatura::Options;
@@ -57,19 +52,14 @@ const SETTLE_ITERATIONS: usize = ITERATIONS / ROUNDS;
 const BUDGET: f64 = 1.5;
 
 /// The paths in report order.
-const PATHS: [&str; 3] = ["core", "roundtrip", "roundtripHtml"];
+const PATHS: [&str; 2] = ["core", "roundtrip"];
 
 /// Path indices, so the report order above and the call [`run`] makes cannot drift apart.
 const CORE: usize = 0;
 const ROUNDTRIP: usize = 1;
-const ROUNDTRIP_HTML: usize = 2;
 
 /// The header for the default `responseFields` and the core's default options.
 const HEADER_DEFAULT: &[u8] = br#"{}"#;
-
-/// The header for the `contentHtml` round trip: the default fields plus the opt-in HTML field.
-const HEADER_HTML: &[u8] =
-    br#"{"responseFields":["contentText","commentsText","contentHtml","metadata"]}"#;
 
 const _: () = assert!(
     ITERATIONS.is_multiple_of(ROUNDS),
@@ -90,30 +80,12 @@ fn main() {
 
     let core = rust_trafilatura::extract(payload, &options).expect("the fixture must extract");
     let (default_response, default_bytes) = response(HEADER_DEFAULT, payload);
-    let (html_response, html_bytes) = response(HEADER_HTML, payload);
 
-    // The ratios only compare the same work if both round trips extracted the same document, and
-    // the third path only measures serialization if it really carries a serialized tree.
+    // The ratio only compares the same work if the round trip extracted the same document.
     assert_eq!(
         default_response["contentText"].as_str(),
         Some(core.content_text.as_str()),
         "the default round trip must return the direct call's text"
-    );
-    assert_eq!(
-        html_response["contentText"].as_str(),
-        Some(core.content_text.as_str()),
-        "the contentHtml round trip must return the direct call's text"
-    );
-    assert!(
-        default_response["contentHtml"].is_null(),
-        "the default responseFields must not compute contentHtml"
-    );
-    assert!(
-        !html_response["contentHtml"]
-            .as_str()
-            .unwrap_or_default()
-            .is_empty(),
-        "the contentHtml round trip must return a serialized tree"
     );
 
     println!(
@@ -127,8 +99,7 @@ fn main() {
         "bench: options (b) roundtrip       {} responseFields = contentText, commentsText, metadata (default)",
         text(HEADER_DEFAULT)
     );
-    println!("bench: options (c) roundtripHtml   {}", text(HEADER_HTML));
-    println!("bench: response bytes default {default_bytes}, contentHtml {html_bytes}");
+    println!("bench: response bytes default {default_bytes}");
 
     let means = measure(payload, &options);
     for (index, name) in PATHS.iter().enumerate() {
@@ -136,11 +107,7 @@ fn main() {
     }
 
     let default_ratio = means[ROUNDTRIP] / means[CORE];
-    let html_ratio = means[ROUNDTRIP_HTML] / means[CORE];
     println!("bench: ratio roundtrip/core     = {default_ratio:.3}");
-    println!(
-        "bench: ratio roundtripHtml/core = {html_ratio:.3} (informational: the direct call does no HTML serialization)"
-    );
 
     if default_ratio > BUDGET {
         eprintln!("bench: FAIL roundtrip/core {default_ratio:.3} exceeds the {BUDGET:.2} budget");
@@ -154,7 +121,7 @@ fn main() {
 /// A whole round's slot is timed rather than each call, so the sample includes no per-call clock
 /// read; the drift a shorter sampling window would pick up is spread across the paths by the
 /// rotation instead.
-fn measure(payload: &[u8], options: &Options) -> [f64; 3] {
+fn measure(payload: &[u8], options: &Options) -> [f64; PATHS.len()] {
     for _ in 0..WARMUP {
         for path in 0..PATHS.len() {
             run(path, payload, options);
@@ -190,10 +157,6 @@ fn run(path: usize, payload: &[u8], options: &Options) {
         ROUNDTRIP => {
             let (code, _) = round_trip(HEADER_DEFAULT, payload);
             assert_eq!(code, 0, "the default round trip must extract");
-        }
-        ROUNDTRIP_HTML => {
-            let (code, _) = round_trip(HEADER_HTML, payload);
-            assert_eq!(code, 0, "the contentHtml round trip must extract");
         }
         other => unreachable!("unknown path index {other}"),
     }

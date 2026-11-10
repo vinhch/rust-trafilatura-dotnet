@@ -14,7 +14,7 @@ public sealed class ResponseTests
     /// <summary>Every response field, so a member the reader left at its default shows up.</summary>
     private static ExtractionOptions AllFields => new()
     {
-        ResponseFields = ["contentText", "commentsText", "contentHtml", "commentsHtml", "metadata"],
+        ResponseFields = ["contentText", "commentsText", "metadata"],
     };
 
     /// <summary>
@@ -57,7 +57,7 @@ public sealed class ResponseTests
         ReadAsACallerWould(Fixtures.Gzip, AllFields);
         ReadAsACallerWould(Fixtures.Article, null);
         ReadAsACallerWould(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] });
-        ReadAsACallerWould(Fixtures.Article, new ExtractionOptions { ResponseFields = ["contentHtml", "commentsHtml"] });
+        ReadAsACallerWould(Fixtures.Article, new ExtractionOptions { ResponseFields = ["commentsText"] });
     }
 
     /// <summary>
@@ -74,8 +74,6 @@ public sealed class ResponseTests
 
         Assert.Null(result.ContentText);
         Assert.Null(result.CommentsText);
-        Assert.Null(result.ContentHtml);
-        Assert.Null(result.CommentsHtml);
 
         var metadata = result.Metadata!;
         Assert.Equal(string.Empty, metadata.Title);
@@ -85,8 +83,6 @@ public sealed class ResponseTests
         Assert.Equal(string.Empty, metadata.Description);
         Assert.Equal(string.Empty, metadata.Sitename);
         Assert.Null(metadata.Date);
-        Assert.Equal(string.Empty, metadata.Id);
-        Assert.Equal(string.Empty, metadata.Fingerprint);
         Assert.Equal(string.Empty, metadata.License);
         Assert.Equal(string.Empty, metadata.Language);
         Assert.Equal(string.Empty, metadata.Image);
@@ -105,12 +101,10 @@ public sealed class ResponseTests
     {
         var result = Response.Read(
             0,
-            """{"contentText":null,"commentsText":"","contentHtml":"","metadata":null}"""u8);
+            """{"contentText":null,"commentsText":"","metadata":null}"""u8);
 
         Assert.Null(result.ContentText);
         Assert.Equal(string.Empty, result.CommentsText);
-        Assert.Equal(string.Empty, result.ContentHtml);
-        Assert.Null(result.CommentsHtml);
         Assert.Null(result.Metadata);
     }
 
@@ -124,9 +118,9 @@ public sealed class ResponseTests
     {
         var result = Response.Read(
             0,
-            """{"contentHtml":{"nested":"value"},"contentText":"kept","commentsText":7}"""u8);
+            """{"commentsText":{"nested":"value"},"contentText":"kept","metadata":7}"""u8);
 
-        Assert.Null(result.ContentHtml);
+        Assert.Null(result.Metadata);
         Assert.Equal("kept", result.ContentText);
         Assert.Null(result.CommentsText);
     }
@@ -182,7 +176,7 @@ public sealed class ResponseTests
         var result = Response.Read(
             0,
             """
-            {"metadata":{"title":"title-value","author":"author-value","url":"url-value","hostname":"hostname-value","description":"description-value","sitename":"sitename-value","date":"2026-10-08T00:00:00Z","categories":["categories-1","categories-2"],"tags":["tags-1"],"id":"id-value","fingerprint":"fingerprint-value","license":"license-value","language":"language-value","image":"image-value","pageType":"pageType-value"}}
+            {"metadata":{"title":"title-value","author":"author-value","url":"url-value","hostname":"hostname-value","description":"description-value","sitename":"sitename-value","date":"2026-10-08T00:00:00Z","categories":["categories-1","categories-2"],"tags":["tags-1"],"license":"license-value","language":"language-value","image":"image-value","pageType":"pageType-value"}}
             """u8);
 
         var metadata = result.Metadata!;
@@ -195,8 +189,6 @@ public sealed class ResponseTests
         Assert.Equal(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero), metadata.Date);
         Assert.Equal(["categories-1", "categories-2"], metadata.Categories);
         Assert.Equal(["tags-1"], metadata.Tags);
-        Assert.Equal("id-value", metadata.Id);
-        Assert.Equal("fingerprint-value", metadata.Fingerprint);
         Assert.Equal("license-value", metadata.License);
         Assert.Equal("language-value", metadata.Language);
         Assert.Equal("image-value", metadata.Image);
@@ -273,8 +265,6 @@ public sealed class ResponseTests
 
         Assert.Equal(ReadText(root, "contentText"), result.ContentText);
         Assert.Equal(ReadText(root, "commentsText"), result.CommentsText);
-        Assert.Equal(ReadText(root, "contentHtml"), result.ContentHtml);
-        Assert.Equal(ReadText(root, "commentsHtml"), result.CommentsHtml);
 
         if (!root.TryGetProperty("metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Object)
         {
@@ -296,8 +286,6 @@ public sealed class ResponseTests
             actual.Date);
         Assert.Equal(ReadTexts(metadata, "categories"), actual.Categories);
         Assert.Equal(ReadTexts(metadata, "tags"), actual.Tags);
-        Assert.Equal(ReadText(metadata, "id") ?? string.Empty, actual.Id);
-        Assert.Equal(ReadText(metadata, "fingerprint") ?? string.Empty, actual.Fingerprint);
         Assert.Equal(ReadText(metadata, "license") ?? string.Empty, actual.License);
         Assert.Equal(ReadText(metadata, "language") ?? string.Empty, actual.Language);
         Assert.Equal(ReadText(metadata, "image") ?? string.Empty, actual.Image);

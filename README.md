@@ -67,7 +67,7 @@ native library applies its own default rather than a value this package invented
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText`, `contentHtml`, `commentsHtml` and `metadata` to return. An unnamed field is never computed, so omitting HTML skips serializing it |
+| `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is left out of the response and is null in the result |
 | `Url` | null | The absolute `http`/`https` URL the page was fetched from. Used for metadata the document cannot carry; any other value is rejected |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
@@ -110,8 +110,6 @@ catch (TrafilaturaException)
 // Content
 result.ContentText    // the article's text
 result.CommentsText   // the comments' text
-result.ContentHtml    // the article as cleaned HTML
-result.CommentsHtml   // the comments as cleaned HTML
 
 // Metadata, as the core reports it
 result.Metadata!.Title         // page title
@@ -123,8 +121,6 @@ result.Metadata!.Description   // meta description
 result.Metadata!.Sitename      // site name
 result.Metadata!.Categories    // IReadOnlyList<string>, never null
 result.Metadata!.Tags          // IReadOnlyList<string>, never null
-result.Metadata!.Id            // the core's document id
-result.Metadata!.Fingerprint   // the core's fingerprint of the document
 result.Metadata!.License       // content licence
 result.Metadata!.Language      // detected language
 result.Metadata!.Image         // featured image URL
@@ -219,9 +215,8 @@ allocation per call, not the page.
 
 ### Only the fields you need
 
-`ResponseFields` shapes the response rather than the extraction, so it is the cheapest option to use:
-asking for text and metadata alone avoids the tree walk and the article-sized buffer that serializing
-HTML costs.
+`ResponseFields` shapes the response rather than the extraction: a field that is not named is left
+out of the response, so it is neither serialized nor read back.
 
 ```csharp
 var options = new ExtractionOptions { ResponseFields = ["contentText", "metadata"] };

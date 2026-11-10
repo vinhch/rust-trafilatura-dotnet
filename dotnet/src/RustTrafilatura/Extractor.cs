@@ -3,7 +3,7 @@ using System.Text;
 namespace RustTrafilatura;
 
 /// <summary>
-/// Extracts text, comments, HTML and metadata from a page. One call per page, with no state to hold
+/// Extracts text, comments and metadata from a page. One call per page, with no state to hold
 /// or dispose between calls.
 /// </summary>
 public static class Extractor

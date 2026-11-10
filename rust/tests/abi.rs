@@ -50,13 +50,7 @@ fn take_json(out: *mut u8, len: usize, cap: usize) -> Option<Value> {
 /// assertion on the value alone cannot tell a documented null from a key that serialization
 /// dropped, which is what section 6's shape stability claim rests on.
 fn assert_failure_envelope_is_empty(json: &Value, case: &str) {
-    for key in [
-        "contentText",
-        "commentsText",
-        "contentHtml",
-        "commentsHtml",
-        "metadata",
-    ] {
+    for key in ["contentText", "commentsText", "metadata"] {
         assert!(
             json.get(key).is_some_and(Value::is_null),
             "{case}: {key} must be present and null, not absent"

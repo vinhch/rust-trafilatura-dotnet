@@ -28,10 +28,6 @@ public sealed class Metadata
     /// <summary>Always an array, never null: empty when the page has no tags.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
-    public string Id { get; init; } = string.Empty;
-
-    public string Fingerprint { get; init; } = string.Empty;
-
     public string License { get; init; } = string.Empty;
 
     public string Language { get; init; } = string.Empty;
@@ -50,10 +46,6 @@ public sealed class ExtractionResult
     public string? ContentText { get; init; }
 
     public string? CommentsText { get; init; }
-
-    public string? ContentHtml { get; init; }
-
-    public string? CommentsHtml { get; init; }
 
     public Metadata? Metadata { get; init; }
 }

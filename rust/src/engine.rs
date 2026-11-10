@@ -7,11 +7,11 @@
 
 use crate::contract::{self, ConfigJson, Header, Request, ResponseField, SCHEMA_VERSION};
 use rust_trafilatura::{
-    Config, ExtractResult, ExtractionFocus, HtmlDateMode, Metadata, Options, Tree, Url,
+    Config, ExtractResult, ExtractionFocus, HtmlDateMode, Metadata, Options, Url,
 };
 use serde::Serialize;
 
-/// The response `metadata` object: one key per core [`Metadata`] field.
+/// The response `metadata` object: one key per core [`Metadata`] field except `id` and `fingerprint`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataJson {
@@ -25,8 +25,6 @@ pub struct MetadataJson {
     pub date: Option<String>,
     pub categories: Vec<String>,
     pub tags: Vec<String>,
-    pub id: String,
-    pub fingerprint: String,
     pub license: String,
     pub language: String,
     pub image: String,
@@ -45,7 +43,7 @@ pub struct ErrorEnvelope {
     pub context: Option<serde_json::Value>,
 }
 
-/// The response envelope, schema version 1.
+/// The response envelope, schema version 2.
 ///
 /// Every key is always serialized. A content field the request did not name stays `None` and
 /// becomes JSON `null`, which is what separates "not asked for" from a requested field that found
@@ -57,8 +55,6 @@ pub struct Response {
     pub schema_version: u32,
     pub content_text: Option<String>,
     pub comments_text: Option<String>,
-    pub content_html: Option<String>,
-    pub comments_html: Option<String>,
     pub metadata: Option<MetadataJson>,
     pub error: Option<ErrorEnvelope>,
 }
@@ -91,32 +87,22 @@ fn assemble(
         schema_version: SCHEMA_VERSION,
         content_text: None,
         comments_text: None,
-        content_html: None,
-        comments_html: None,
         metadata: None,
         error: None,
     };
     match extracted {
         Ok(result) => {
             let ExtractResult {
-                content_node,
-                comments_node,
                 content_text,
                 comments_text,
                 metadata,
+                ..
             } = result;
             if fields.contains(&ResponseField::ContentText) {
                 response.content_text = Some(content_text);
             }
             if fields.contains(&ResponseField::CommentsText) {
                 response.comments_text = Some(comments_text);
-            }
-            if fields.contains(&ResponseField::ContentHtml) {
-                response.content_html = Some(outer_html(&content_node));
-            }
-            if fields.contains(&ResponseField::CommentsHtml) {
-                response.comments_html =
-                    Some(comments_node.as_ref().map_or_else(String::new, outer_html));
             }
             if fields.contains(&ResponseField::Metadata) {
                 response.metadata = Some(metadata_json(metadata));
@@ -127,8 +113,6 @@ fn assemble(
                 match field {
                     ResponseField::ContentText => response.content_text = Some(String::new()),
                     ResponseField::CommentsText => response.comments_text = Some(String::new()),
-                    ResponseField::ContentHtml => response.content_html = Some(String::new()),
-                    ResponseField::CommentsHtml => response.comments_html = Some(String::new()),
                     ResponseField::Metadata => {}
                 }
             }
@@ -141,11 +125,6 @@ fn assemble(
         }
     }
     response
-}
-
-/// Serializes one tree root, never the whole document.
-fn outer_html(tree: &Tree) -> String {
-    tree.document.outer_html(tree.root)
 }
 
 /// Maps the request header onto the core options. An absent key keeps the core's own default, so
@@ -247,8 +226,6 @@ fn metadata_json(metadata: Metadata) -> MetadataJson {
         date: contract::format_date(metadata.date),
         categories: metadata.categories,
         tags: metadata.tags,
-        id: metadata.id,
-        fingerprint: metadata.fingerprint,
         license: metadata.license,
         language: metadata.language,
         image: metadata.image,
@@ -319,7 +296,7 @@ mod tests {
     use serde_json::json;
 
     const TEXT_ONLY: &[u8] = br#"{"responseFields":["contentText"]}"#;
-    const EVERYTHING: &[u8] = br#"{"responseFields":["contentText","commentsText","contentHtml","commentsHtml","metadata"]}"#;
+    const EVERYTHING: &[u8] = br#"{"responseFields":["contentText","commentsText","metadata"]}"#;
     /// Index into [`FIXTURES`] of the document that carries a comments container.
     const WITH_COMMENTS: usize = 3;
 
@@ -391,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn default_response_fields_omit_html() {
+    fn default_response_fields_are_text_comments_and_metadata() {
         let response = build(&parse_request(br#"{}"#).unwrap(), FIXTURES[0].as_bytes());
         assert!(!response
             .content_text
@@ -400,7 +377,6 @@ mod tests {
             .is_empty());
         assert_eq!(response.comments_text.as_deref(), Some(""));
         assert!(response.metadata.is_some());
-        assert!(response.content_html.is_none() && response.comments_html.is_none());
     }
 
     #[test]
@@ -409,70 +385,23 @@ mod tests {
         let everything = build(&parse_request(EVERYTHING).unwrap(), html);
         assert!(everything.content_text.is_some());
         assert!(everything.comments_text.is_some());
-        assert!(everything.content_html.is_some());
-        assert!(everything.comments_html.is_some());
         assert!(everything.metadata.is_some());
 
         let text_only = build(&parse_request(TEXT_ONLY).unwrap(), html);
         assert!(text_only.content_text.is_some());
         assert!(text_only.comments_text.is_none());
-        assert!(text_only.content_html.is_none());
-        assert!(text_only.comments_html.is_none());
         assert!(text_only.metadata.is_none());
 
-        let html_only = build(
-            &parse_request(br#"{"responseFields":["contentHtml"]}"#).unwrap(),
+        let metadata_only = build(
+            &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
             html,
         );
-        assert!(html_only.content_html.is_some());
-        assert!(html_only.comments_html.is_none());
-        assert!(html_only.content_text.is_none());
-    }
-
-    #[test]
-    fn omitting_html_skips_serialization() {
-        let request = parse_request(TEXT_ONLY).unwrap();
-        let response = build(&request, FIXTURES[0].as_bytes());
-        assert!(response.content_html.is_none() && response.comments_html.is_none());
-    }
-
-    #[test]
-    fn content_html_serializes_only_the_content_root() {
-        let html = FIXTURES[0].as_bytes();
-        let response = build(
-            &parse_request(br#"{"responseFields":["contentHtml"]}"#).unwrap(),
-            html,
-        );
-        let expected = rust_trafilatura::extract(html, &Options::default()).unwrap();
-        let expected_html = expected
-            .content_node
-            .document
-            .outer_html(expected.content_node.root);
-        assert_eq!(
-            response.content_html.as_deref(),
-            Some(expected_html.as_str())
-        );
-        assert!(
-            !response.content_html.as_deref().unwrap().contains("<html"),
-            "the whole document leaked into contentHtml"
-        );
-    }
-
-    #[test]
-    fn comments_html_is_empty_when_requested_without_comments_node() {
-        let comments_only =
-            parse_request(br#"{"responseFields":["commentsText","commentsHtml"]}"#).unwrap();
-        let without = build(&comments_only, FIXTURES[0].as_bytes());
-        assert_eq!(without.comments_text.as_deref(), Some(""));
-        assert_eq!(without.comments_html.as_deref(), Some(""));
-        let with = build(&comments_only, FIXTURES[WITH_COMMENTS].as_bytes());
-        assert!(!with.comments_text.as_deref().unwrap_or_default().is_empty());
-        assert!(!with.comments_html.as_deref().unwrap_or_default().is_empty());
-        let unrequested = build(
-            &parse_request(TEXT_ONLY).unwrap(),
-            FIXTURES[WITH_COMMENTS].as_bytes(),
-        );
-        assert!(unrequested.comments_html.is_none());
+        assert!(metadata_only.metadata.is_some());
+        assert!(metadata_only.content_text.is_none());
+        assert!(metadata_only.comments_text.is_none());
+        let value = serde_json::to_value(&metadata_only).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 5, "{value}");
+        assert_eq!(value["metadata"].as_object().unwrap().len(), 13, "{value}");
     }
 
     #[test]
@@ -518,8 +447,8 @@ mod tests {
                 .unwrap(),
             categories: vec!["f-category".to_owned()],
             tags: vec!["f-tag".to_owned()],
-            id: "f-id".to_owned(),
-            fingerprint: "f-fingerprint".to_owned(),
+            id: String::new(),
+            fingerprint: String::new(),
             license: "f-license".to_owned(),
             language: "f-language".to_owned(),
             image: "f-image".to_owned(),
@@ -529,7 +458,7 @@ mod tests {
         let object = value.as_object().expect("metadata serializes to an object");
         assert_eq!(
             object.len(),
-            15,
+            13,
             "the metadata object has one key per field"
         );
         for (key, expected) in [
@@ -542,8 +471,6 @@ mod tests {
             ("date", serde_json::json!("2026-09-29T00:00:00Z")),
             ("categories", serde_json::json!(["f-category"])),
             ("tags", serde_json::json!(["f-tag"])),
-            ("id", serde_json::json!("f-id")),
-            ("fingerprint", serde_json::json!("f-fingerprint")),
             ("license", serde_json::json!("f-license")),
             ("language", serde_json::json!("f-language")),
             ("image", serde_json::json!("f-image")),
@@ -560,8 +487,6 @@ mod tests {
         assert_eq!(value["schemaVersion"], 2);
         assert_eq!(value["contentText"], "");
         assert!(value["commentsText"].is_null());
-        assert!(value["contentHtml"].is_null());
-        assert!(value["commentsHtml"].is_null());
         assert!(value["metadata"].is_null());
         assert_eq!(value["error"]["kind"], "OutputTooShort");
         assert!(value["error"]["context"]["content"].is_number());
@@ -572,8 +497,6 @@ mod tests {
         let response = build(&parse_request(EVERYTHING).unwrap(), &[]);
         assert_eq!(response.content_text.as_deref(), Some(""));
         assert_eq!(response.comments_text.as_deref(), Some(""));
-        assert_eq!(response.content_html.as_deref(), Some(""));
-        assert_eq!(response.comments_html.as_deref(), Some(""));
         assert!(
             response.metadata.is_none(),
             "metadata stays null on failure"
@@ -584,13 +507,11 @@ mod tests {
     fn every_response_key_is_present_on_success_and_on_failure() {
         // An absent key is not a null value. A `skip_serializing_if` only drops a key whose value is
         // `None`, so the requests below are chosen to leave every key `None` in at least one of them:
-        // a response that populates all seven cannot show that the key survives being absent.
-        const KEYS: [&str; 7] = [
+        // a response that populates all five cannot show that the key survives being absent.
+        const KEYS: [&str; 5] = [
             "schemaVersion",
             "contentText",
             "commentsText",
-            "contentHtml",
-            "commentsHtml",
             "metadata",
             "error",
         ];
@@ -619,8 +540,8 @@ mod tests {
     #[test]
     fn failure_fills_only_the_content_field_that_was_requested() {
         // One field per request: with every field requested at once, a swapped arm in the failure
-        // branch still fills all four, so the swap would pass a test that only requests everything.
-        const FIELDS: [&str; 4] = ["contentText", "commentsText", "contentHtml", "commentsHtml"];
+        // branch still fills both, so the swap would pass a test that only requests everything.
+        const FIELDS: [&str; 2] = ["contentText", "commentsText"];
         for requested in FIELDS {
             let header = format!(r#"{{"responseFields":["{requested}"]}}"#);
             let value =

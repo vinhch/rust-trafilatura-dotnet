@@ -82,8 +82,8 @@ public sealed class ExtractionOptions
     public string? Url { get; set; }
 
     /// <summary>
-    /// The response fields to return, named from `contentText`, `commentsText`, `contentHtml`,
-    /// `commentsHtml` and `metadata`; null asks for the default of text, comments and metadata.
+    /// The response fields to return, named from `contentText`, `commentsText` and
+    /// `metadata`; null asks for the default of text, comments and metadata.
     /// A field not named here is null in the result, while a named field that found nothing is an
     /// empty string. This shapes the response rather than the extraction, so it travels at the
     /// header's top level rather than inside `options`, which is why it is not serialized here.

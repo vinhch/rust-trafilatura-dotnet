@@ -10,16 +10,6 @@ namespace RustTrafilatura.Tests;
 /// </summary>
 public sealed class OptionsTests
 {
-    [Fact]
-    public void Default_Response_Omits_Html()
-    {
-        var result = Extractor.ExtractFromBytes(Fixtures.Article);
-
-        Assert.Null(result.ContentHtml);
-        Assert.Null(result.CommentsHtml);
-        Assert.NotNull(result.ContentText);
-    }
-
     /// <summary>
     /// An unset option takes the core's own default rather than a value this layer invented, so the
     /// extraction that leaves the options object out and the one that sends an empty one agree. The
@@ -65,21 +55,6 @@ public sealed class OptionsTests
 
         Assert.Same(Array.Empty<string>(), result.Metadata!.Categories);
         Assert.Same(Array.Empty<string>(), result.Metadata.Tags);
-    }
-
-    [Fact]
-    public void Requesting_Html_Returns_It()
-    {
-        var result = Extractor.ExtractFromBytes(
-            Fixtures.Article,
-            new ExtractionOptions { ResponseFields = ["contentHtml", "commentsHtml"] });
-
-        Assert.Contains("<h1", result.ContentHtml);
-        Assert.Equal(string.Empty, result.CommentsHtml);
-
-        // The HTML fields are opt-in, so asking for them is what turns the text off.
-        Assert.Null(result.ContentText);
-        Assert.Null(result.Metadata);
     }
 
     [Fact]

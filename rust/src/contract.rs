@@ -18,8 +18,6 @@ pub const SCHEMA_VERSION: u32 = 2;
 pub enum ResponseField {
     ContentText,
     CommentsText,
-    ContentHtml,
-    CommentsHtml,
     Metadata,
 }
 
@@ -29,15 +27,13 @@ impl ResponseField {
         match name {
             "contentText" => Some(Self::ContentText),
             "commentsText" => Some(Self::CommentsText),
-            "contentHtml" => Some(Self::ContentHtml),
-            "commentsHtml" => Some(Self::CommentsHtml),
             "metadata" => Some(Self::Metadata),
             _ => None,
         }
     }
 }
 
-/// Requested fields when `responseFields` is absent. The HTML fields stay opt-in.
+/// Requested fields when `responseFields` is absent.
 const DEFAULT_RESPONSE_FIELDS: [ResponseField; 3] = [
     ResponseField::ContentText,
     ResponseField::CommentsText,
@@ -351,20 +347,31 @@ mod tests {
             parse_request(br#"{"responseFields":[]}"#),
             Err(RequestError::InvalidRequest(reason)) if reason.contains("must not be empty")
         ));
-        let request = parse_request(
-            br#"{"responseFields":["contentHtml","metadata","commentsHtml","commentsText","contentText"]}"#,
-        )
-        .unwrap();
+        let request =
+            parse_request(br#"{"responseFields":["metadata","commentsText","contentText"]}"#)
+                .unwrap();
         assert_eq!(
             request.fields,
             vec![
-                ResponseField::ContentHtml,
                 ResponseField::Metadata,
-                ResponseField::CommentsHtml,
                 ResponseField::CommentsText,
                 ResponseField::ContentText
             ]
         );
+    }
+
+    #[test]
+    fn html_response_fields_are_unknown() {
+        for header in [
+            &br#"{"responseFields":["contentHtml"]}"#[..],
+            &br#"{"responseFields":["commentsHtml"]}"#[..],
+        ] {
+            assert!(
+                matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+                "{} must be an InvalidRequest",
+                String::from_utf8_lossy(header)
+            );
+        }
     }
 
     #[test]

@@ -322,13 +322,7 @@ fn panic_is_caught() {
         .as_str()
         .expect("the Panic envelope carries the message");
     assert!(message.contains("panics on purpose"), "{message}");
-    for key in [
-        "contentText",
-        "commentsText",
-        "contentHtml",
-        "commentsHtml",
-        "metadata",
-    ] {
+    for key in ["contentText", "commentsText", "metadata"] {
         assert!(json[key].is_null(), "{key} must stay null on a panic");
     }
 

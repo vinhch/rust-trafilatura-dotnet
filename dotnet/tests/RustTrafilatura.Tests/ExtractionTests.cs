@@ -29,7 +29,6 @@ public sealed class ExtractionTests
         Assert.DoesNotContain("<p>", result.ContentText);
         Assert.DoesNotContain("</", result.ContentText);
         Assert.Equal("Research results", result.Metadata!.Title);
-        Assert.Null(result.ContentHtml);
     }
 
     [Fact]

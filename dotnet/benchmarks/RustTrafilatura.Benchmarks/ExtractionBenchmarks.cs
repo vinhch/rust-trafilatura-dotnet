@@ -48,7 +48,7 @@ public class ExtractionBenchmarks
         _options = Fields == ResponseFields.Everything
             ? new ExtractionOptions
             {
-                ResponseFields = ["contentText", "commentsText", "contentHtml", "commentsHtml", "metadata"],
+                ResponseFields = ["contentText", "commentsText", "metadata"],
             }
             : new ExtractionOptions();
     }
