@@ -4,8 +4,8 @@ version = "0.2.0"
 edition = "2021"
 rust-version = "1.98.1"
 # This repository's own source is MIT. The crate links the released core crate, which is
-# dual-licensed `Apache-2.0 OR MIT`, so MIT is the option this field states; the dependency graph's
-# expressions are the allow-list in deny.toml rather than part of this declaration.
+# `Apache-2.0` only, so this field states the license of this repository's own code; the dependency
+# graph's expressions are the allow-list in deny.toml rather than part of this declaration.
 license = "MIT"
 publish = false
 
@@ -19,11 +19,13 @@ name = "roundtrip"
 harness = false
 
 [dependencies]
-rust-trafilatura = { version = "=2.2.8", default-features = false }
+trafilatura-rust = { version = "=0.2.0", default-features = false, features = ["decompress"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 mimalloc = { version = "0.1", optional = true }
+
+[dev-dependencies]
+flate2 = "1.1.10"
 
 [features]
 default = ["mimalloc"]

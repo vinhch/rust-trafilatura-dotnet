@@ -69,6 +69,18 @@ internal static class Fixtures
     internal static string NoDateHtml { get; } =
         ArticleHtml.Replace(DateMeta, string.Empty, StringComparison.Ordinal);
 
+    /// <summary>The article with a locale that names German, which an English target rejects.</summary>
+    internal static string GermanLocaleHtml { get; } = ArticleHtml.Replace(
+        "<meta charset=\"utf-8\">",
+        "<meta charset=\"utf-8\"><meta property=\"og:locale\" content=\"de_DE\">",
+        StringComparison.Ordinal);
+
+    /// <summary>The article with an image whose source the core cannot join to the page URL.</summary>
+    internal static string BrokenImageHtml { get; } = ArticleHtml.Replace(
+        "<p>The research team published",
+        "<p><img src=\"//[::1/x.jpg\">The research team published",
+        StringComparison.Ordinal);
+
     /// <summary>
     /// A page whose extracted text carries a quotation mark and a non-ASCII letter, both written as
     /// character references so the page's own bytes stay ASCII: a response built from it carries that

@@ -1,14 +1,12 @@
-//! The JSON request header contract: parsing, validation, error kinds and date formatting.
+//! The JSON request header contract: parsing, validation and error kinds.
 //!
 //! This module is the only place that reads and validates the request header: it parses the
 //! wire shape into [`Header`]/[`OptionsJson`] and maps core errors onto contract error kinds. It
 //! never touches the core's `Options` or builds a response envelope; `engine` owns both.
 
-use chrono::{DateTime, SecondsFormat};
-use rust_trafilatura::rust_htmldate::{ExtractionResult, Timezone};
-use rust_trafilatura::Error;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
+use trafilatura_rust::{ExtractError, InputLimit, Rejection, TreeLimit};
 
 /// The only request header version this wrapper accepts.
 pub const SCHEMA_VERSION: u32 = 2;
@@ -74,7 +72,7 @@ pub struct OptionsJson {
     pub config: Option<ConfigJson>,
 }
 
-/// Core `ExtractionFocus` values in camelCase.
+/// Wire spellings of the core `Focus`, in camelCase.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum FocusJson {
@@ -83,7 +81,8 @@ pub enum FocusJson {
     FavorPrecision,
 }
 
-/// Core `HtmlDateMode` values in camelCase.
+/// Wire spellings of `htmlDateMode`, in camelCase. The core has no such enum: it reads two of the
+/// three values from `Config::extensive_date_search`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum HtmlDateModeJson {
@@ -157,48 +156,69 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
 
 /// Maps a core error onto its `kind` and optional `context`.
 ///
-/// The `message` of an error object is not built here: the caller fills it from the core error's
-/// `Display`, which is where `UnsupportedCharset`, `HtmlLanguage` and `WrongLanguage` fold their
-/// payloads.
-pub fn error_kind(error: &Error) -> (&'static str, Option<Value>) {
+/// The `message` of an error object is not built here: the caller fills it from the error's
+/// `Display`, which is where the core's payloads are folded in.
+pub fn error_kind(error: &ExtractError) -> (&'static str, Option<Value>) {
     match error {
-        Error::Io(_) => ("Io", None),
-        Error::UnsupportedCharset(_) => ("UnsupportedCharset", None),
-        Error::CharsetNotDetected => ("CharsetNotDetected", None),
-        Error::MissingDocument => ("MissingDocument", None),
-        Error::HtmlLanguage(_) => ("HtmlLanguage", None),
-        Error::RequiredTitle => ("RequiredTitle", None),
-        Error::RequiredUrl => ("RequiredUrl", None),
-        Error::RequiredDate => ("RequiredDate", None),
-        Error::OutputTreeTooLong(count) => (
-            "OutputTreeTooLong",
-            Some(serde_json::json!({ "count": count })),
-        ),
-        Error::OutputTooShort(content, comments) => (
-            "OutputTooShort",
-            Some(serde_json::json!({ "content": content, "comments": comments })),
-        ),
-        Error::DuplicateBody => ("DuplicateBody", None),
-        Error::WrongLanguage { .. } => ("WrongLanguage", None),
+        ExtractError::Rejected(rejection) => rejection_kind(*rejection),
+        // No wire kind for these yet.
+        ExtractError::Cancelled | ExtractError::DeadlineExceeded => ("Unknown", None),
+        _ => ("Unknown", None),
     }
 }
 
-/// Formats an extracted date, or `None` when the page carries none.
-///
-/// The core signals "no date" by leaving `metadata.date` at
-/// `rust_htmldate::ExtractionResult::default().date_time`; that sentinel maps to JSON `null`
-/// instead of being serialized as `0001-01-01T00:00:00Z`.
-pub fn format_date(date: DateTime<Timezone>) -> Option<String> {
-    if date == ExtractionResult::default().date_time {
-        return None;
+fn rejection_kind(rejection: Rejection) -> (&'static str, Option<Value>) {
+    match rejection {
+        Rejection::EmptyTree => ("MissingDocument", None),
+        Rejection::WrongHtmlLang => ("HtmlLanguage", None),
+        // The core's language classifier reports no language in this version, so it never raises this.
+        Rejection::WrongLanguage => ("WrongLanguage", None),
+        // The wrapper never sets `url_blacklist`, so the core does not raise this.
+        Rejection::BlacklistedUrl => ("BlacklistedUrl", None),
+        // `Call::default()` carries no dedup cache, and without one no text is flagged.
+        Rejection::Duplicate => ("DuplicateBody", None),
+        Rejection::InvalidValue => ("InvalidValue", None),
+        Rejection::MissingMetadata(missing) => (
+            "MissingMetadata",
+            Some(json!({ "missing": missing.names().collect::<Vec<_>>() })),
+        ),
+        Rejection::TooShort {
+            text_chars,
+            comments_chars,
+        } => (
+            "OutputTooShort",
+            Some(json!({ "textChars": text_chars, "commentsChars": comments_chars })),
+        ),
+        Rejection::TreeTooLarge(limit) => ("OutputTreeTooLong", Some(tree_limit_context(limit))),
+        Rejection::InputTooLarge(limit) => ("InputTooLarge", Some(input_limit_context(limit))),
+        _ => ("Unknown", None),
     }
-    Some(date.to_rfc3339_opts(SecondsFormat::AutoSi, true))
+}
+
+fn tree_limit_context(limit: TreeLimit) -> Value {
+    match limit {
+        TreeLimit::MaxNodes => json!({ "limit": "maxNodes" }),
+        TreeLimit::TagAttributes => json!({ "limit": "tagAttributes" }),
+        TreeLimit::MaxTreeSize { children } => {
+            json!({ "limit": "maxTreeSize", "children": children })
+        }
+        TreeLimit::TableCells => json!({ "limit": "tableCells" }),
+        _ => json!({ "limit": "unknown" }),
+    }
+}
+
+fn input_limit_context(limit: InputLimit) -> Value {
+    match limit {
+        InputLimit::MaxInputBytes => json!({ "limit": "maxInputBytes" }),
+        InputLimit::MaxFileSize => json!({ "limit": "maxFileSize" }),
+        InputLimit::JsonSize => json!({ "limit": "jsonSize" }),
+        _ => json!({ "limit": "unknown" }),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Timelike};
     use serde_json::json;
 
     #[test]
@@ -469,65 +489,89 @@ mod tests {
 
     #[test]
     fn error_kind_covers_every_core_variant() {
-        let cases: [(Error, &str, Option<Value>); 12] = [
-            (Error::Io(std::io::Error::other("io failed")), "Io", None),
+        let cases = [
             (
-                Error::UnsupportedCharset("x-unknown".to_owned()),
-                "UnsupportedCharset",
+                ExtractError::Rejected(Rejection::EmptyTree),
+                "MissingDocument",
                 None,
             ),
-            (Error::CharsetNotDetected, "CharsetNotDetected", None),
-            (Error::MissingDocument, "MissingDocument", None),
-            (Error::HtmlLanguage("de".to_owned()), "HtmlLanguage", None),
-            (Error::RequiredTitle, "RequiredTitle", None),
-            (Error::RequiredUrl, "RequiredUrl", None),
-            (Error::RequiredDate, "RequiredDate", None),
             (
-                Error::OutputTreeTooLong(4096),
-                "OutputTreeTooLong",
-                Some(json!({"count": 4096})),
+                ExtractError::Rejected(Rejection::WrongHtmlLang),
+                "HtmlLanguage",
+                None,
             ),
             (
-                Error::OutputTooShort(250, 1),
-                "OutputTooShort",
-                Some(json!({"content": 250, "comments": 1})),
-            ),
-            (Error::DuplicateBody, "DuplicateBody", None),
-            (
-                Error::WrongLanguage {
-                    wanted: "en".to_owned(),
-                    found: "de".to_owned(),
-                },
+                ExtractError::Rejected(Rejection::WrongLanguage),
                 "WrongLanguage",
                 None,
             ),
+            (
+                ExtractError::Rejected(Rejection::Duplicate),
+                "DuplicateBody",
+                None,
+            ),
+            (
+                ExtractError::Rejected(Rejection::BlacklistedUrl),
+                "BlacklistedUrl",
+                None,
+            ),
+            (
+                ExtractError::Rejected(Rejection::InvalidValue),
+                "InvalidValue",
+                None,
+            ),
+            (
+                ExtractError::Rejected(Rejection::TooShort {
+                    text_chars: 3,
+                    comments_chars: 4,
+                }),
+                "OutputTooShort",
+                Some(json!({"textChars": 3, "commentsChars": 4})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxTreeSize {
+                    children: 9,
+                })),
+                "OutputTreeTooLong",
+                Some(json!({"limit": "maxTreeSize", "children": 9})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes)),
+                "OutputTreeTooLong",
+                Some(json!({"limit": "maxNodes"})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes)),
+                "OutputTreeTooLong",
+                Some(json!({"limit": "tagAttributes"})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TableCells)),
+                "OutputTreeTooLong",
+                Some(json!({"limit": "tableCells"})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxInputBytes)),
+                "InputTooLarge",
+                Some(json!({"limit": "maxInputBytes"})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxFileSize)),
+                "InputTooLarge",
+                Some(json!({"limit": "maxFileSize"})),
+            ),
+            (
+                ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::JsonSize)),
+                "InputTooLarge",
+                Some(json!({"limit": "jsonSize"})),
+            ),
+            (ExtractError::Cancelled, "Unknown", None),
+            (ExtractError::DeadlineExceeded, "Unknown", None),
         ];
         for (error, kind, context) in cases {
             let (actual_kind, actual_context) = error_kind(&error);
             assert_eq!(actual_kind, kind, "{error:?}");
             assert_eq!(actual_context, context, "{error:?}");
         }
-    }
-
-    #[test]
-    fn date_zero_default_becomes_null() {
-        assert_eq!(format_date(ExtractionResult::default().date_time), None);
-    }
-
-    #[test]
-    fn date_present_is_rfc3339_with_z() {
-        let date = Timezone::Utc
-            .with_ymd_and_hms(2026, 9, 29, 0, 0, 0)
-            .unwrap();
-        assert_eq!(format_date(date).as_deref(), Some("2026-09-29T00:00:00Z"));
-        let date = Timezone::Utc
-            .with_ymd_and_hms(2026, 9, 29, 13, 14, 15)
-            .unwrap()
-            .with_nanosecond(500_000_000)
-            .unwrap();
-        assert_eq!(
-            format_date(date).as_deref(),
-            Some("2026-09-29T13:14:15.500Z")
-        );
     }
 }

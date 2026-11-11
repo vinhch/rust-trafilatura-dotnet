@@ -5,13 +5,12 @@
 //! the request named. A core error is not returned as `Err`; it lands in [`Response::error`], so
 //! success and failure keep one envelope shape.
 
-use crate::contract::{self, ConfigJson, Header, Request, ResponseField, SCHEMA_VERSION};
-use rust_trafilatura::{
-    Config, ExtractResult, ExtractionFocus, HtmlDateMode, Metadata, Options, Url,
-};
+use crate::contract::{self, ConfigJson, Request, ResponseField, SCHEMA_VERSION};
 use serde::Serialize;
+use trafilatura_rust::{Call, Config, Document, ExtractError, Focus, Input, Options};
 
-/// The response `metadata` object: one key per core [`Metadata`] field except `id` and `fingerprint`.
+/// The response `metadata` object: the metadata fields of the core [`Document`] under their wire
+/// names. A field the page does not carry is an empty string, except `date`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataJson {
@@ -21,7 +20,7 @@ pub struct MetadataJson {
     pub hostname: String,
     pub description: String,
     pub sitename: String,
-    /// `None` when the page carries no date; the core's zero sentinel never reaches the wire.
+    /// `None` when the page carries no date.
     pub date: Option<String>,
     pub categories: Vec<String>,
     pub tags: Vec<String>,
@@ -62,10 +61,12 @@ pub struct Response {
 /// Extracts from a raw payload and assembles the response. Infallible: core errors are mapped
 /// onto [`Response::error`].
 pub fn build(request: &Request, payload: &[u8]) -> Response {
-    assemble(
-        request,
-        rust_trafilatura::extract(payload, &options_from(&request.header)),
-    )
+    let extractor = options_from(request).build();
+    let mut input = Input::bytes(payload);
+    if let Some(url) = request.header.url.as_deref().filter(|url| !url.is_empty()) {
+        input = input.url(url);
+    }
+    assemble(request, extractor.bare_extraction(&input, &Call::default()))
 }
 
 /// Extracts from HTML the caller already decoded, on the same pipeline as [`build`].
@@ -77,11 +78,8 @@ pub fn build_from_html(request: &Request, html: &str) -> Response {
     build(request, html.as_bytes())
 }
 
-/// Fills in the requested fields of a response from the core's result, or the error envelope.
-fn assemble(
-    request: &Request,
-    extracted: Result<ExtractResult, rust_trafilatura::Error>,
-) -> Response {
+/// Fills in the requested fields of a response from the core's document, or the error envelope.
+fn assemble(request: &Request, extracted: Result<Document, ExtractError>) -> Response {
     let fields = &request.fields;
     let mut response = Response {
         schema_version: SCHEMA_VERSION,
@@ -91,21 +89,15 @@ fn assemble(
         error: None,
     };
     match extracted {
-        Ok(result) => {
-            let ExtractResult {
-                content_text,
-                comments_text,
-                metadata,
-                ..
-            } = result;
+        Ok(mut document) => {
             if fields.contains(&ResponseField::ContentText) {
-                response.content_text = Some(content_text);
+                response.content_text = Some(document.text.take().unwrap_or_default());
             }
             if fields.contains(&ResponseField::CommentsText) {
-                response.comments_text = Some(comments_text);
+                response.comments_text = Some(document.comments.take().unwrap_or_default());
             }
             if fields.contains(&ResponseField::Metadata) {
-                response.metadata = Some(metadata_json(metadata));
+                response.metadata = Some(metadata_json(document));
             }
         }
         Err(error) => {
@@ -127,109 +119,109 @@ fn assemble(
     response
 }
 
-/// Maps the request header onto the core options. An absent key keeps the core's own default, so
-/// an empty `options` object is exactly `Options::default()`.
-fn options_from(header: &Header) -> Options {
-    let mut options = Options {
-        config: header
-            .options
-            .as_ref()
-            .and_then(|options| options.config.as_ref())
-            .map(config_from),
-        original_url: header
-            .url
-            .as_deref()
-            .filter(|url| !url.is_empty())
-            .and_then(Url::request),
-        ..Options::default()
-    };
-    let Some(json) = &header.options else {
+/// Maps the request onto the core options. An absent key keeps the core's own default, so an empty
+/// `options` object gives the same options as no `options` key. `with_metadata` follows the
+/// requested `metadata` field, not the options: a blacklist or an essential-metadata check still
+/// extracts metadata, and the response then leaves it out.
+fn options_from(request: &Request) -> Options {
+    let mut options =
+        Options::new().with_metadata(request.fields.contains(&ResponseField::Metadata));
+    let Some(json) = &request.header.options else {
         return options;
     };
-    if let Some(value) = &json.target_language {
-        options.target_language.clone_from(value);
-    }
-    if let Some(value) = json.focus {
-        options.focus = focus_from(value);
-    }
-    if let Some(value) = json.exclude_comments {
-        options.exclude_comments = value;
-    }
-    if let Some(value) = json.exclude_tables {
-        options.exclude_tables = value;
-    }
-    if let Some(value) = json.include_images {
-        options.include_images = value;
-    }
-    if let Some(value) = json.include_links {
-        options.include_links = value;
-    }
-    if let Some(value) = &json.blacklisted_authors {
-        options.blacklisted_authors.clone_from(value);
-    }
-    if let Some(value) = json.has_essential_metadata {
-        options.has_essential_metadata = value;
+    let mut config = Config::default();
+    if let Some(sizes) = &json.config {
+        config_sizes_from(sizes, &mut config);
     }
     if let Some(value) = json.max_tree_size {
-        options.max_tree_size = value;
+        config.max_tree_size = usize::try_from(value).ok().filter(|size| *size > 0);
     }
     if let Some(value) = json.html_date_mode {
-        options.html_date_mode = html_date_mode_from(value);
+        config.extensive_date_search = extensive_date_search_from(value);
+    }
+    options = options.config(config);
+    if let Some(value) = &json.target_language {
+        options = options.target_language(value);
+    }
+    if let Some(value) = json.focus {
+        options = options.focus(focus_from(value));
+    }
+    if let Some(value) = json.exclude_comments {
+        options = options.comments(!value);
+    }
+    if let Some(value) = json.exclude_tables {
+        options = options.tables(!value);
+    }
+    if let Some(value) = json.include_images {
+        options = options.images(value);
+    }
+    if let Some(value) = json.include_links {
+        options = options.links(value);
+    }
+    if let Some(value) = &json.blacklisted_authors {
+        options = options.author_blacklist(value);
+    }
+    if let Some(value) = json.has_essential_metadata {
+        options = options.only_with_metadata(value);
     }
     options
 }
 
-/// Maps the `options.config` object onto a core [`Config`], each omitted key from
-/// [`Config::default`]. The duplicate-check and cache members are not on the wire and keep their
-/// defaults.
-fn config_from(json: &ConfigJson) -> Config {
-    let default = Config::default();
-    Config {
-        min_extracted_size: json
-            .min_extracted_size
-            .unwrap_or(default.min_extracted_size),
-        min_output_size: json.min_output_size.unwrap_or(default.min_output_size),
-        min_output_comment_size: json
-            .min_output_comment_size
-            .unwrap_or(default.min_output_comment_size),
-        ..default
-    }
+/// Copies the `options.config` sizes onto the core [`Config`], each omitted key keeping its value.
+/// A negative size is no size, so it reads as zero.
+fn config_sizes_from(json: &ConfigJson, config: &mut Config) {
+    config.min_extracted_size = json
+        .min_extracted_size
+        .map_or(config.min_extracted_size, size_from);
+    config.min_output_size = json
+        .min_output_size
+        .map_or(config.min_output_size, size_from);
+    config.min_output_comm_size = json
+        .min_output_comment_size
+        .map_or(config.min_output_comm_size, size_from);
+}
+
+/// A wire size as the core's `usize`; a negative value reads as zero.
+fn size_from(value: i64) -> usize {
+    usize::try_from(value).unwrap_or(0)
 }
 
 /// The wire `focus` enum is not the core enum, so no `From` shortcut applies.
-fn focus_from(focus: contract::FocusJson) -> ExtractionFocus {
+fn focus_from(focus: contract::FocusJson) -> Focus {
     match focus {
-        contract::FocusJson::Balanced => ExtractionFocus::Balanced,
-        contract::FocusJson::FavorRecall => ExtractionFocus::FavorRecall,
-        contract::FocusJson::FavorPrecision => ExtractionFocus::FavorPrecision,
+        contract::FocusJson::Balanced => Focus::Balanced,
+        contract::FocusJson::FavorRecall => Focus::Recall,
+        contract::FocusJson::FavorPrecision => Focus::Precision,
     }
 }
 
-/// The wire `htmlDateMode` enum is not the core enum, so no `From` shortcut applies.
-fn html_date_mode_from(mode: contract::HtmlDateModeJson) -> HtmlDateMode {
+/// The core has one switch for the date search, so `htmlDateMode` maps onto it: `fast` turns the
+/// extensive search off, `extensive` turns it on, and `default` keeps the core's own default.
+fn extensive_date_search_from(mode: contract::HtmlDateModeJson) -> bool {
     match mode {
-        contract::HtmlDateModeJson::Default => HtmlDateMode::Default,
-        contract::HtmlDateModeJson::Fast => HtmlDateMode::Fast,
-        contract::HtmlDateModeJson::Extensive => HtmlDateMode::Extensive,
+        contract::HtmlDateModeJson::Default => Config::default().extensive_date_search,
+        contract::HtmlDateModeJson::Fast => false,
+        contract::HtmlDateModeJson::Extensive => true,
     }
 }
 
-/// Moves the core metadata into its wire shape, formatting the date on the way.
-fn metadata_json(metadata: Metadata) -> MetadataJson {
+/// Moves the core metadata into its wire shape. Absent fields become empty strings, the date stays
+/// absent, and the core's `pagetype` is the wire `pageType`.
+fn metadata_json(document: Document) -> MetadataJson {
     MetadataJson {
-        title: metadata.title,
-        author: metadata.author,
-        url: metadata.url,
-        hostname: metadata.hostname,
-        description: metadata.description,
-        sitename: metadata.sitename,
-        date: contract::format_date(metadata.date),
-        categories: metadata.categories,
-        tags: metadata.tags,
-        license: metadata.license,
-        language: metadata.language,
-        image: metadata.image,
-        page_type: metadata.page_type,
+        title: document.title.unwrap_or_default(),
+        author: document.author.unwrap_or_default(),
+        url: document.url.unwrap_or_default(),
+        hostname: document.hostname.unwrap_or_default(),
+        description: document.description.unwrap_or_default(),
+        sitename: document.sitename.unwrap_or_default(),
+        date: document.date,
+        categories: document.categories.unwrap_or_default(),
+        tags: document.tags.unwrap_or_default(),
+        license: document.license.unwrap_or_default(),
+        language: document.language.unwrap_or_default(),
+        image: document.image.unwrap_or_default(),
+        page_type: document.pagetype.unwrap_or_default(),
     }
 }
 
@@ -261,8 +253,7 @@ const WINDOWS_1252: &[u8] = b"<html lang=\"en\"><head><meta charset=\"windows-12
 #[cfg(test)]
 const GZIP_PLAIN: &str = r#"<html lang="en"><head><title>Gzipped fixture</title></head><body><article><h1>Gzipped fixture</h1><p>A compressed payload must reach the same document as its plain-text twin: the core detects the gzip magic, inflates the stream and only then looks for a charset, so the decoded text is identical either way.</p><p>The second paragraph gives the extractor enough body text to keep the article instead of discarding it as too short for the minimum output size.</p></article></body></html>"#;
 
-/// [`GZIP_PLAIN`] through `gzip -n -9`, pasted as bytes because `flate2` is not a dependency of
-/// this crate.
+/// [`GZIP_PLAIN`] through `gzip -n -9`, pasted as bytes so the fixture does not depend on an encoder.
 #[cfg(test)]
 const GZIP: &[u8] = &[
     0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03, 0x65, 0x51, 0x41, 0x4e, 0xc4, 0x30,
@@ -291,8 +282,6 @@ const GZIP: &[u8] = &[
 mod tests {
     use super::*;
     use crate::contract::parse_request;
-    use chrono::TimeZone;
-    use rust_trafilatura::rust_htmldate::Timezone;
     use serde_json::json;
 
     const TEXT_ONLY: &[u8] = br#"{"responseFields":["contentText"]}"#;
@@ -300,15 +289,25 @@ mod tests {
     /// Index into [`FIXTURES`] of the document that carries a comments container.
     const WITH_COMMENTS: usize = 3;
 
+    /// The debug form of the core options, which is how the option mapping is compared: the crate
+    /// keeps its fields private.
+    fn debug_of(options: Options) -> String {
+        format!("{:?}", options.build())
+    }
+
     #[test]
     fn bytes_path_matches_core_on_inline_fixtures() {
         for (index, html) in FIXTURES.iter().enumerate() {
             let request = parse_request(TEXT_ONLY).unwrap();
             let response = build(&request, html.as_bytes());
-            let expected = rust_trafilatura::extract(html.as_bytes(), &Options::default()).unwrap();
+            let expected = Options::new()
+                .with_metadata(false)
+                .build()
+                .bare_extraction(&Input::bytes(html.as_bytes()), &Call::default())
+                .unwrap();
             assert_eq!(
                 response.content_text.as_deref(),
-                Some(expected.content_text.as_str()),
+                Some(expected.text.as_deref().unwrap_or_default()),
                 "FIXTURES[{index}] differs between the byte path and the core"
             );
         }
@@ -343,13 +342,6 @@ mod tests {
     }
 
     #[test]
-    fn truncated_gzip_returns_io_error() {
-        let request = parse_request(br#"{}"#).unwrap();
-        let response = build(&request, &[0x1f, 0x8b, 0x08, 0x00, 0x00]);
-        assert_eq!(response.error.unwrap().kind, "Io");
-    }
-
-    #[test]
     fn meta_charset_is_detected() {
         let response = build(&parse_request(TEXT_ONLY).unwrap(), WINDOWS_1252);
         assert!(response.error.is_none(), "{:?}", response.error);
@@ -362,9 +354,9 @@ mod tests {
     fn empty_payload_reaches_the_core() {
         let response = build(&parse_request(br#"{}"#).unwrap(), &[]);
         let error = response.error.expect("the core must report its own error");
-        assert_eq!(error.kind, "OutputTooShort");
-        assert_eq!(error.message, "text and comments are not long enough: 0 0");
-        assert_eq!(error.context, Some(json!({"content": 0, "comments": 0})));
+        assert_eq!(error.kind, "MissingDocument");
+        assert_eq!(error.message, "page rejected: empty tree");
+        assert_eq!(error.context, None);
     }
 
     #[test]
@@ -414,7 +406,7 @@ mod tests {
         assert_eq!(metadata.title, "Filed article");
         assert_eq!(metadata.author, "Ada Lovelace");
         assert_eq!(metadata.sitename, "Example Journal");
-        assert_eq!(metadata.date.as_deref(), Some("2026-09-29T00:00:00Z"));
+        assert_eq!(metadata.date.as_deref(), Some("2026-09-29"));
         let value = serde_json::to_value(&metadata).unwrap();
         assert!(value["categories"].is_array() && value["tags"].is_array());
         assert!(value.get("pageType").is_some());
@@ -432,52 +424,58 @@ mod tests {
     }
 
     #[test]
-    fn metadata_json_moves_every_core_field_to_its_own_wire_key() {
-        // Distinct values in every core field, so a swap between two of them is visible. The wire
-        // shape is asserted separately: a rename passes a value-for-value comparison.
-        let metadata = Metadata {
-            title: "f-title".to_owned(),
-            author: "f-author".to_owned(),
-            url: "f-url".to_owned(),
-            hostname: "f-hostname".to_owned(),
-            description: "f-description".to_owned(),
-            sitename: "f-sitename".to_owned(),
-            date: Timezone::Utc
-                .with_ymd_and_hms(2026, 9, 29, 0, 0, 0)
-                .unwrap(),
-            categories: vec!["f-category".to_owned()],
-            tags: vec!["f-tag".to_owned()],
-            id: String::new(),
-            fingerprint: String::new(),
-            license: "f-license".to_owned(),
-            language: "f-language".to_owned(),
-            image: "f-image".to_owned(),
-            page_type: "f-pageType".to_owned(),
-        };
-        let value = serde_json::to_value(metadata_json(metadata)).unwrap();
-        let object = value.as_object().expect("metadata serializes to an object");
-        assert_eq!(
-            object.len(),
-            13,
-            "the metadata object has one key per field"
+    fn metadata_keys_follow_the_document() {
+        // One distinct value per field, so a swap between two wire keys shows as a mismatch. The
+        // url is the canonical link, and the hostname is taken from it.
+        let html = r#"<html lang="en"><head><title>f-title</title><meta name="author" content="Frances Author"><meta name="description" content="f-description"><meta property="og:site_name" content="Sitename Gazette"><meta property="og:type" content="f-pagetype"><meta property="og:image" content="https://example.org/f-image.jpg"><meta property="article:tag" content="f-tag"><meta property="article:published_time" content="2026-09-29T00:00:00Z"><link rel="canonical" href="https://example.org/f-url"></head><body><article><h1>f-title</h1><p>The council approved the measure after a lengthy debate, citing the need for clearer rules on how public data is published. Officials said the new framework will take effect next spring and that compliance will be reviewed annually, with a public report published each year.</p><p class="postmeta"><a href="https://example.org/category/f-category">f-category</a></p><p><a rel="license" href="https://example.org/f-license">f-license</a></p><p>A second paragraph adds enough body text for the extractor to keep the article instead of discarding it as too short.</p></article></body></html>"#;
+        let response = build(
+            &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
+            html.as_bytes(),
         );
-        for (key, expected) in [
-            ("title", serde_json::json!("f-title")),
-            ("author", serde_json::json!("f-author")),
-            ("url", serde_json::json!("f-url")),
-            ("hostname", serde_json::json!("f-hostname")),
-            ("description", serde_json::json!("f-description")),
-            ("sitename", serde_json::json!("f-sitename")),
-            ("date", serde_json::json!("2026-09-29T00:00:00Z")),
-            ("categories", serde_json::json!(["f-category"])),
-            ("tags", serde_json::json!(["f-tag"])),
-            ("license", serde_json::json!("f-license")),
-            ("language", serde_json::json!("f-language")),
-            ("image", serde_json::json!("f-image")),
-            ("pageType", serde_json::json!("f-pageType")),
-        ] {
-            assert_eq!(object.get(key), Some(&expected), "{key} in {value}");
-        }
+        assert!(response.error.is_none(), "{:?}", response.error);
+        let value = serde_json::to_value(response.metadata.unwrap()).unwrap();
+        assert_eq!(value["title"], "f-title", "{value}");
+        assert_eq!(value["author"], "Frances Author", "{value}");
+        assert_eq!(value["url"], "https://example.org/f-url", "{value}");
+        assert_eq!(value["hostname"], "example.org", "{value}");
+        assert_eq!(value["description"], "f-description", "{value}");
+        assert_eq!(value["sitename"], "Sitename Gazette", "{value}");
+        assert_eq!(value["date"], "2026-09-29", "{value}");
+        assert_eq!(value["categories"], json!(["f-category"]), "{value}");
+        assert_eq!(value["tags"], json!(["f-tag"]), "{value}");
+        assert_eq!(value["license"], "f-license", "{value}");
+        assert_eq!(value["image"], "https://example.org/f-image.jpg", "{value}");
+        assert_eq!(value["pageType"], "f-pagetype", "{value}");
+        assert_eq!(value["language"], "", "{value}");
+    }
+
+    #[test]
+    fn url_is_the_default_metadata_url() {
+        let response = build(
+            &parse_request(br#"{"url":"https://example.org/post","responseFields":["metadata"]}"#)
+                .unwrap(),
+            FIXTURES[0].as_bytes(),
+        );
+        let value = serde_json::to_value(response.metadata.unwrap()).unwrap();
+        assert_eq!(value["url"], "https://example.org/post", "{value}");
+        assert_eq!(value["hostname"], "example.org", "{value}");
+    }
+
+    #[test]
+    fn empty_url_is_absent() {
+        let html = FIXTURES[0].as_bytes();
+        let absent = build(&parse_request(EVERYTHING).unwrap(), html);
+        let empty = build(
+            &parse_request(
+                br#"{"url":"","responseFields":["contentText","commentsText","metadata"]}"#,
+            )
+            .unwrap(),
+            html,
+        );
+        assert_eq!(
+            serde_json::to_value(&absent).unwrap(),
+            serde_json::to_value(&empty).unwrap()
+        );
     }
 
     #[test]
@@ -488,8 +486,8 @@ mod tests {
         assert_eq!(value["contentText"], "");
         assert!(value["commentsText"].is_null());
         assert!(value["metadata"].is_null());
-        assert_eq!(value["error"]["kind"], "OutputTooShort");
-        assert!(value["error"]["context"]["content"].is_number());
+        assert_eq!(value["error"]["kind"], "MissingDocument");
+        assert!(value["error"].get("context").is_none(), "{value}");
     }
 
     #[test]
@@ -563,47 +561,60 @@ mod tests {
 
     #[test]
     fn error_context_carries_the_core_counts() {
-        let options = Options {
-            config: Some(Config {
+        let html = FIXTURES[0].as_bytes();
+        let expected = Options::new()
+            .config(Config {
                 min_output_size: 10_000,
                 ..Config::default()
-            }),
-            ..Options::default()
-        };
-        let expected = rust_trafilatura::extract(FIXTURES[0].as_bytes(), &options).unwrap_err();
-        assert!(matches!(
-            expected,
-            rust_trafilatura::Error::OutputTooShort(..)
-        ));
+            })
+            .build()
+            .bare_extraction(&Input::bytes(html), &Call::default())
+            .unwrap_err();
         let response = build(
             &parse_request(br#"{"options":{"config":{"minOutputSize":10000}}}"#).unwrap(),
-            FIXTURES[0].as_bytes(),
+            html,
         );
         let error = response.error.expect("minOutputSize 10000 must fail");
         assert_eq!(error.kind, "OutputTooShort");
         assert_eq!(error.context, contract::error_kind(&expected).1);
         let context = error.context.unwrap();
         assert!(
-            context["content"].as_u64().unwrap_or_default() > 0,
+            context["textChars"].as_u64().unwrap_or_default() > 0,
             "the mapped minOutputSize must reach the core: {context}"
         );
-        assert_eq!(context["comments"], json!(0));
+        assert_eq!(context["commentsChars"], json!(0));
+    }
+
+    #[test]
+    fn node_cap_rejects_a_page_past_500000_nodes() {
+        let html = format!("<html><body>{}</body></html>", "<b></b>".repeat(500_001));
+        let response = build(&parse_request(TEXT_ONLY).unwrap(), html.as_bytes());
+        let error = response.error.expect("500,001 elements must be rejected");
+        assert_eq!(error.kind, "OutputTreeTooLong");
+        assert_eq!(error.context, Some(json!({"limit": "maxNodes"})));
     }
 
     #[test]
     fn options_absent_uses_core_defaults() {
         let html = FIXTURES[0].as_bytes();
         let response = build(&parse_request(br#"{}"#).unwrap(), html);
-        let expected = rust_trafilatura::extract(html, &Options::default()).unwrap();
+        let expected = Options::new()
+            .with_metadata(true)
+            .build()
+            .bare_extraction(&Input::bytes(html), &Call::default())
+            .unwrap();
         assert_eq!(
-            response.content_text.as_deref(),
-            Some(expected.content_text.as_str())
+            response.content_text,
+            Some(expected.text.unwrap_or_default())
         );
         assert_eq!(
-            response.comments_text.as_deref(),
-            Some(expected.comments_text.as_str())
+            response.comments_text,
+            Some(expected.comments.unwrap_or_default())
         );
-        assert_eq!(response.metadata.unwrap().title, expected.metadata.title);
+        assert_eq!(
+            response.metadata.unwrap().title,
+            expected.title.unwrap_or_default()
+        );
     }
 
     #[test]
@@ -618,164 +629,137 @@ mod tests {
     }
 
     #[test]
-    fn options_from_keeps_fast_mode_and_no_dedup() {
-        let request = parse_request(
-            br#"{
-                "url": "https://example.org/article",
-                "options": {
-                    "targetLanguage": "en",
-                    "focus": "favorRecall",
-                    "excludeComments": true,
-                    "excludeTables": true,
-                    "includeImages": true,
-                    "includeLinks": true,
-                    "blacklistedAuthors": ["a"],
-                    "hasEssentialMetadata": true,
-                    "maxTreeSize": 1050,
-                    "htmlDateMode": "extensive",
-                    "config": {
-                        "minExtractedSize": 300,
-                        "minOutputSize": 4,
-                        "minOutputCommentSize": 5
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-        let options = options_from(&request.header);
-        assert!(!options.enable_fallback);
-        assert!(!options.deduplicate);
-        assert!(options.input_encoding.is_empty());
-        assert!(options.prune_selector.is_empty());
-        let config = options.config.expect("config was set");
-        let default = Config::default();
-        assert_eq!(config.cache_size, default.cache_size);
-        assert_eq!(config.max_duplicate_count, default.max_duplicate_count);
-        assert_eq!(
-            config.min_duplicate_check_size,
-            default.min_duplicate_check_size
-        );
-        assert_eq!(
-            config.min_extracted_comment_size,
-            default.min_extracted_comment_size
-        );
-    }
-
-    #[test]
-    fn wire_options_map_onto_every_core_field() {
-        let request = parse_request(
-            br#"{
-                "url": "https://example.org/article",
-                "options": {
-                    "targetLanguage": "en",
-                    "focus": "favorRecall",
-                    "excludeComments": true,
-                    "excludeTables": true,
-                    "includeImages": true,
-                    "includeLinks": true,
-                    "blacklistedAuthors": ["a", "b"],
-                    "hasEssentialMetadata": true,
-                    "maxTreeSize": 1050,
-                    "htmlDateMode": "extensive",
-                    "config": {
-                        "minExtractedSize": 300,
-                        "minOutputSize": 4,
-                        "minOutputCommentSize": 5
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-        let options = options_from(&request.header);
-        assert_eq!(
-            options
-                .original_url
-                .as_ref()
-                .map(ToString::to_string)
-                .as_deref(),
-            Some("https://example.org/article")
-        );
-        assert_eq!(options.target_language, "en");
-        assert_eq!(options.focus, ExtractionFocus::FavorRecall);
-        assert!(options.exclude_comments);
-        assert!(options.exclude_tables);
-        assert!(options.include_images);
-        assert!(options.include_links);
-        assert_eq!(
-            options.blacklisted_authors,
-            vec!["a".to_owned(), "b".to_owned()]
-        );
-        assert!(options.has_essential_metadata);
-        assert_eq!(options.max_tree_size, 1050);
-        assert_eq!(options.html_date_mode, HtmlDateMode::Extensive);
-        assert!(!options.enable_log);
-        assert_eq!(
-            options.config,
-            Some(Config {
-                min_extracted_size: 300,
-                min_output_size: 4,
-                min_output_comment_size: 5,
-                ..Config::default()
-            })
-        );
-    }
-
-    #[test]
-    fn focus_and_html_date_mode_map_by_variant() {
-        for (wire, expected) in [
-            ("balanced", ExtractionFocus::Balanced),
-            ("favorRecall", ExtractionFocus::FavorRecall),
-            ("favorPrecision", ExtractionFocus::FavorPrecision),
-        ] {
-            let header = format!(r#"{{"options":{{"focus":"{wire}"}}}}"#);
-            let request = parse_request(header.as_bytes()).unwrap();
-            assert_eq!(options_from(&request.header).focus, expected, "{wire}");
-        }
-        for (wire, expected) in [
-            ("default", HtmlDateMode::Default),
-            ("fast", HtmlDateMode::Fast),
-            ("extensive", HtmlDateMode::Extensive),
-        ] {
-            let header = format!(r#"{{"options":{{"htmlDateMode":"{wire}"}}}}"#);
-            let request = parse_request(header.as_bytes()).unwrap();
+    fn options_map_onto_the_crate_builders() {
+        let with_metadata = || Options::new().with_metadata(true);
+        let cases: Vec<(&[u8], Options)> = vec![
+            (br#"{}"#, with_metadata()),
+            (TEXT_ONLY, Options::new()),
+            (
+                br#"{"options":{"targetLanguage":"en"}}"#,
+                with_metadata().target_language("en"),
+            ),
+            (
+                br#"{"options":{"focus":"balanced"}}"#,
+                with_metadata().focus(Focus::Balanced),
+            ),
+            (
+                br#"{"options":{"focus":"favorPrecision"}}"#,
+                with_metadata().focus(Focus::Precision),
+            ),
+            (
+                br#"{"options":{"focus":"favorRecall"}}"#,
+                with_metadata().focus(Focus::Recall),
+            ),
+            (
+                br#"{"options":{"excludeComments":true}}"#,
+                with_metadata().comments(false),
+            ),
+            (
+                br#"{"options":{"excludeTables":true}}"#,
+                with_metadata().tables(false),
+            ),
+            (
+                br#"{"options":{"includeImages":true}}"#,
+                with_metadata().images(true),
+            ),
+            (
+                br#"{"options":{"includeLinks":true}}"#,
+                with_metadata().links(true),
+            ),
+            (
+                br#"{"options":{"blacklistedAuthors":["a"]}}"#,
+                with_metadata().author_blacklist(["a"]),
+            ),
+            (
+                br#"{"options":{"hasEssentialMetadata":true}}"#,
+                with_metadata().only_with_metadata(true),
+            ),
+            (
+                br#"{"options":{"maxTreeSize":4000}}"#,
+                with_metadata().config(Config {
+                    max_tree_size: Some(4000),
+                    ..Config::default()
+                }),
+            ),
+            (
+                br#"{"options":{"htmlDateMode":"default"}}"#,
+                with_metadata(),
+            ),
+            (
+                br#"{"options":{"htmlDateMode":"fast"}}"#,
+                with_metadata().config(Config {
+                    extensive_date_search: false,
+                    ..Config::default()
+                }),
+            ),
+            (
+                br#"{"options":{"htmlDateMode":"extensive"}}"#,
+                with_metadata().config(Config {
+                    extensive_date_search: true,
+                    ..Config::default()
+                }),
+            ),
+            (
+                br#"{"options":{"config":{"minExtractedSize":300,"minOutputSize":4,"minOutputCommentSize":5}}}"#,
+                with_metadata().config(Config {
+                    min_extracted_size: 300,
+                    min_output_size: 4,
+                    min_output_comm_size: 5,
+                    ..Config::default()
+                }),
+            ),
+            (
+                br#"{"responseFields":["commentsText"]}"#,
+                Options::new(),
+            ),
+        ];
+        for (header, expected) in cases {
+            let request = parse_request(header).unwrap();
             assert_eq!(
-                options_from(&request.header).html_date_mode,
-                expected,
-                "{wire}"
+                debug_of(options_from(&request)),
+                debug_of(expected),
+                "{}",
+                String::from_utf8_lossy(header)
             );
         }
     }
 
     #[test]
-    fn config_keys_default_to_core_defaults() {
-        let absent = parse_request(br#"{"options":{}}"#).unwrap();
-        assert_eq!(options_from(&absent.header).config, None);
-        let empty = parse_request(br#"{"options":{"config":{}}}"#).unwrap();
-        assert_eq!(options_from(&empty.header).config, Some(Config::default()));
-        let partial = parse_request(br#"{"options":{"config":{"minOutputSize":4}}}"#).unwrap();
+    fn negative_and_zero_sizes_mean_no_limit() {
+        let no_limit = Config {
+            max_tree_size: None,
+            ..Config::default()
+        };
+        for header in [
+            &br#"{"options":{"maxTreeSize":-1}}"#[..],
+            &br#"{"options":{"maxTreeSize":0}}"#[..],
+        ] {
+            let request = parse_request(header).unwrap();
+            assert_eq!(
+                debug_of(options_from(&request)),
+                debug_of(with_metadata_only(no_limit.clone())),
+                "{}",
+                String::from_utf8_lossy(header)
+            );
+        }
+        let request = parse_request(
+            br#"{"options":{"config":{"minExtractedSize":-5,"minOutputSize":-5,"minOutputCommentSize":-5}}}"#,
+        )
+        .unwrap();
+        let zeroed = Config {
+            min_extracted_size: 0,
+            min_output_size: 0,
+            min_output_comm_size: 0,
+            ..Config::default()
+        };
         assert_eq!(
-            options_from(&partial.header).config,
-            Some(Config {
-                min_output_size: 4,
-                ..Config::default()
-            })
+            debug_of(options_from(&request)),
+            debug_of(with_metadata_only(zeroed))
         );
     }
 
-    #[test]
-    fn url_and_absent_url_map_onto_original_url() {
-        let absent = parse_request(br#"{}"#).unwrap();
-        assert!(options_from(&absent.header).original_url.is_none());
-        let empty = parse_request(br#"{"url":""}"#).unwrap();
-        assert!(options_from(&empty.header).original_url.is_none());
-        let present = parse_request(br#"{"url":"https://example.org/a?b=c"}"#).unwrap();
-        assert_eq!(
-            options_from(&present.header)
-                .original_url
-                .as_ref()
-                .map(ToString::to_string)
-                .as_deref(),
-            Some("https://example.org/a?b=c")
-        );
+    /// The default-fields options with `config` set, as the mapping builds them.
+    fn with_metadata_only(config: Config) -> Options {
+        Options::new().with_metadata(true).config(config)
     }
 }

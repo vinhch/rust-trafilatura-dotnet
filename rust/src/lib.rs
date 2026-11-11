@@ -1,4 +1,4 @@
-//! C ABI glue for the published `rust-trafilatura` crate.
+//! C ABI glue for the published `trafilatura-rust` crate.
 //!
 //! Modules:
 //!
@@ -69,9 +69,9 @@ static PANIC_HOOK: OnceLock<()> = OnceLock::new();
 
 /// The process-wide allocator, on by default.
 ///
-/// The published throughput comes from mimalloc, and the core crate declares it only in its own
-/// binary and example, so a cdylib built from this crate would otherwise fall back to the system
-/// allocator. `default-features = false` drops the feature with the dependency.
+/// The published throughput comes from mimalloc. The core crate declares no allocator, so a cdylib
+/// built from this crate would otherwise fall back to the system allocator. `default-features =
+/// false` drops the feature with the dependency.
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;

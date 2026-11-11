@@ -5,8 +5,8 @@
 //!
 //! Two paths, one fixture, one pinned option set:
 //!
-//! - `core`: `rust_trafilatura::extract(payload, &options)`, which is what `rt_extract` calls
-//!   internally.
+//! - `core`: `Options::new().with_metadata(true).build().bare_extraction(..)`, the crate call that
+//!   `rt_extract` makes internally for the same request.
 //! - `roundtrip`: `rt_extract` plus `rt_free` with the default `responseFields`
 //!   (`contentText`, `commentsText`, `metadata`).
 //!
@@ -17,11 +17,11 @@
 //! — and two consecutive measurements would hand the last path an advantage of the same order as
 //! the overhead being measured.
 
-use rust_trafilatura::Options;
 use rust_trafilatura_ffi::{rt_extract, rt_free};
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::time::Instant;
+use trafilatura_rust::{Call, Extractor, Input, Options};
 
 /// The fixture size: a fixed 200 KB fixture.
 const FIXTURE_BYTES: usize = 200 * 1024;
@@ -69,7 +69,7 @@ const _: () = assert!(
 fn main() {
     let fixture = fixture();
     let payload = fixture.as_bytes();
-    let options = Options::default();
+    let options = Options::new().with_metadata(true).build();
 
     // A generator edit must fail here rather than quietly change the size this bench records.
     assert_eq!(
@@ -78,13 +78,15 @@ fn main() {
         "the fixture generator changed: update FIXTURE_LEN and FixtureLength in dotnet/tools/AllocProbe/Program.cs"
     );
 
-    let core = rust_trafilatura::extract(payload, &options).expect("the fixture must extract");
+    let core = options
+        .bare_extraction(&Input::bytes(payload), &Call::default())
+        .expect("the fixture must extract");
     let (default_response, default_bytes) = response(HEADER_DEFAULT, payload);
 
     // The ratio only compares the same work if the round trip extracted the same document.
     assert_eq!(
         default_response["contentText"].as_str(),
-        Some(core.content_text.as_str()),
+        Some(core.text.as_deref().unwrap_or_default()),
         "the default round trip must return the direct call's text"
     );
 
@@ -94,7 +96,7 @@ fn main() {
         ITERATIONS / ROUNDS
     );
     println!("bench: profile bench (cargo bench), which inherits release and lto = \"thin\"");
-    println!("bench: options (a) core            Options::default()");
+    println!("bench: options (a) core            Options::new().with_metadata(true)");
     println!(
         "bench: options (b) roundtrip       {} responseFields = contentText, commentsText, metadata (default)",
         text(HEADER_DEFAULT)
@@ -121,7 +123,7 @@ fn main() {
 /// A whole round's slot is timed rather than each call, so the sample includes no per-call clock
 /// read; the drift a shorter sampling window would pick up is spread across the paths by the
 /// rotation instead.
-fn measure(payload: &[u8], options: &Options) -> [f64; PATHS.len()] {
+fn measure(payload: &[u8], options: &Extractor) -> [f64; PATHS.len()] {
     for _ in 0..WARMUP {
         for path in 0..PATHS.len() {
             run(path, payload, options);
@@ -149,10 +151,12 @@ fn measure(payload: &[u8], options: &Options) -> [f64; PATHS.len()] {
 }
 
 /// One call on the path with the given index, asserting that it extracted.
-fn run(path: usize, payload: &[u8], options: &Options) {
+fn run(path: usize, payload: &[u8], options: &Extractor) {
     match path {
         CORE => {
-            rust_trafilatura::extract(payload, options).expect("the fixture must extract");
+            options
+                .bare_extraction(&Input::bytes(payload), &Call::default())
+                .expect("the fixture must extract");
         }
         ROUNDTRIP => {
             let (code, _) = round_trip(HEADER_DEFAULT, payload);

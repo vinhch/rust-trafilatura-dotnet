@@ -9,7 +9,7 @@
 #[cfg(feature = "test-hooks")]
 use rust_trafilatura_ffi::rt_panic_for_test;
 use rust_trafilatura_ffi::{rt_extract, rt_free};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// The default payload cap in bytes. The cap is compared with `>`, so a payload exactly at the cap is
 /// accepted.
@@ -75,6 +75,16 @@ fn take_json(out: *mut u8, len: usize, cap: usize) -> Option<Value> {
 fn extract_text(header: &[u8], payload: &[u8]) -> (i32, Option<String>) {
     let (code, json) = call(header, payload);
     (code, json.map(|value| value.to_string()))
+}
+
+/// The gzip stream of `bytes`, built by the test's own encoder so the payload is a real stream.
+fn gzip(bytes: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(bytes)
+        .expect("writing to a Vec cannot fail");
+    encoder.finish().expect("finishing a Vec cannot fail")
 }
 
 /// A seeded xorshift, so the garbage below is reproducible.
@@ -192,15 +202,15 @@ fn garbage_requests_never_panic() {
     }
 
     // The rounds above prove nothing about the payload being read, because every garbage payload
-    // and the empty one reach the same core error. These bytes are the gzip magic, which only the
-    // core classifies: a call that dropped or ignored the payload would report the empty-input
-    // OutputTooShort instead of the inflater's Io.
-    let mut gzipish = vec![0x1f, 0x8b, 0x08, 0x00, 0x00];
-    gzipish.extend_from_slice(&pseudo_random(&mut seed, 59));
-    let (code, json) = call(TEXT_ONLY, &gzipish);
-    assert_eq!(code, 1, "{json:?}");
-    let json = json.expect("code 1 writes the error envelope");
-    assert_eq!(json["error"]["kind"], "Io", "{json}");
+    // and the empty one reach the same core error. A gzip of an article gets its text back only if
+    // the payload is read, decoded and extracted, so a call that dropped the payload fails here.
+    let (code, json) = call(TEXT_ONLY, &gzip(ARTICLE.as_bytes()));
+    let json = json.expect("code 0 writes the response");
+    assert_eq!(code, 0, "{json}");
+    assert!(
+        !json["contentText"].as_str().unwrap_or_default().is_empty(),
+        "{json}"
+    );
 }
 
 #[test]
@@ -265,8 +275,24 @@ fn empty_payload_returns_error_not_panic() {
     assert_eq!(code, 1, "zero-length input is the core's own error");
     let json = json.expect("code 1 writes the error envelope");
     assert_eq!(json["schemaVersion"], 2);
-    assert_eq!(json["error"]["kind"], "OutputTooShort", "{json}");
+    assert_eq!(json["error"]["kind"], "MissingDocument", "{json}");
     assert_eq!(json["contentText"], "", "{json}");
+}
+
+#[test]
+fn gzip_past_the_decompressed_cap_is_input_too_large() {
+    // The core caps gzip output at 20,000,000 bytes and this wrapper does not set the cap. About
+    // 20 KB of compressed spaces inflate past it, so the rejection comes from the core's own check.
+    let spaces = vec![b' '; 21_000_000];
+    let (code, json) = call(TEXT_ONLY, &gzip(&spaces));
+    assert_eq!(code, 1, "{json:?}");
+    let json = json.expect("code 1 writes the error envelope");
+    assert_eq!(json["error"]["kind"], "InputTooLarge", "{json}");
+    assert_eq!(
+        json["error"]["context"],
+        json!({"limit": "maxFileSize"}),
+        "{json}"
+    );
 }
 
 #[test]

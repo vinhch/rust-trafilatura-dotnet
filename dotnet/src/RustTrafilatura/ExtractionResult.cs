@@ -19,8 +19,8 @@ public sealed class Metadata
 
     public string Sitename { get; init; } = string.Empty;
 
-    /// <summary>The publication date, or null when the page carries none.</summary>
-    public DateTimeOffset? Date { get; init; }
+    /// <summary>The publication date as `YYYY-MM-DD`, or null when the page carries none.</summary>
+    public string? Date { get; init; }
 
     /// <summary>Always an array, never null: empty when the page has no categories.</summary>
     public IReadOnlyList<string> Categories { get; init; } = [];

@@ -5,18 +5,32 @@ namespace RustTrafilatura;
 /// </summary>
 public enum TrafilaturaErrorKind
 {
-    Io,
-    UnsupportedCharset,
-    CharsetNotDetected,
     MissingDocument,
     HtmlLanguage,
-    RequiredTitle,
-    RequiredUrl,
-    RequiredDate,
+    MissingMetadata,
     OutputTreeTooLong,
     OutputTooShort,
-    DuplicateBody,
+    InputTooLarge,
+
+    /// <summary>
+    /// The detected language differs from the target language. It occurs once the core's language
+    /// classifier reports a language, and the classifier of this core version reports none.
+    /// </summary>
     WrongLanguage,
+
+    /// <summary>
+    /// The text repeats one a shared duplicate cache already holds. It occurs only with such a cache, which
+    /// this binding does not pass.
+    /// </summary>
+    DuplicateBody,
+
+    /// <summary>
+    /// The URL is on the core's URL blacklist. It occurs only with a blacklist, which this binding does not
+    /// set.
+    /// </summary>
+    BlacklistedUrl,
+
+    InvalidValue,
     InvalidRequest,
     Panic,
 

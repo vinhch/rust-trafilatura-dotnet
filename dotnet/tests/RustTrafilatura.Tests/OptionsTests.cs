@@ -77,8 +77,8 @@ public sealed class OptionsTests
         Assert.Equal("Ada Lovelace", metadata.Author);
         Assert.Equal("The research team reports its findings.", metadata.Description);
         Assert.Equal("Example Journal", metadata.Sitename);
-        Assert.Equal("en", metadata.Language);
-        Assert.Equal(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero), metadata.Date);
+        Assert.Equal("", metadata.Language);
+        Assert.Equal("2026-10-08", metadata.Date);
         Assert.Empty(metadata.Categories);
         Assert.Empty(metadata.Tags);
     }

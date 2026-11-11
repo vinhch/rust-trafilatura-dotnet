@@ -1,6 +1,6 @@
 // The core version this binding links, compiled into the ABI document so a consumer can read it back.
 //
-// Nothing in `rust-trafilatura` reports its own version, and cargo exposes no macro for a dependency's,
+// Nothing in `trafilatura-rust` reports its own version, and cargo exposes no macro for a dependency's,
 // so the resolved version is read out of the lockfile here. The lockfile is also what pins the
 // dependency exactly, which makes this the version the linked code was compiled from rather than the
 // version the manifest asks for.
@@ -28,7 +28,7 @@ fn main() {
 
     let version = core_version(&text).unwrap_or_else(|| {
         panic!(
-            "no `rust-trafilatura` [[package]] block in {}, so the core version this binding links cannot be reported",
+            "no `trafilatura-rust` [[package]] block in {}, so the core version this binding links cannot be reported",
             lockfile.display()
         )
     });
@@ -36,14 +36,14 @@ fn main() {
     println!("cargo:rustc-env=RT_CORE_VERSION={version}");
 }
 
-/// The version of the `rust-trafilatura` entry in a lockfile: the entry is located by its `name = `
+/// The version of the `trafilatura-rust` entry in a lockfile: the entry is located by its `name = `
 /// line, and the version is the `version = ` line that follows it, which is the order cargo writes.
 fn core_version(lockfile: &str) -> Option<String> {
     let mut inside = false;
 
     for line in lockfile.lines() {
         if let Some(name) = line.strip_prefix("name = \"") {
-            inside = name.trim_end_matches('"') == "rust-trafilatura";
+            inside = name.trim_end_matches('"') == "trafilatura-rust";
             continue;
         }
 

@@ -128,9 +128,9 @@ public sealed class BytesTests
         var fromEmpty = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(Array.Empty<byte>()));
         var fromEmptySpan = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromSpan(default(ReadOnlySpan<byte>)));
 
-        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, fromNull.Kind);
-        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, fromDefault.Kind);
-        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, fromEmptySpan.Kind);
+        Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromNull.Kind);
+        Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromDefault.Kind);
+        Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromEmptySpan.Kind);
         Assert.Equal(fromEmpty.Kind, fromNull.Kind);
         Assert.Equal(fromEmpty.Message, fromNull.Message);
         Assert.Equal(fromEmpty.Message, fromEmptySpan.Message);

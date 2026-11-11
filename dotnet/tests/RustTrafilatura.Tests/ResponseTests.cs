@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Xunit;
 
@@ -176,7 +175,7 @@ public sealed class ResponseTests
         var result = Response.Read(
             0,
             """
-            {"metadata":{"title":"title-value","author":"author-value","url":"url-value","hostname":"hostname-value","description":"description-value","sitename":"sitename-value","date":"2026-10-08T00:00:00Z","categories":["categories-1","categories-2"],"tags":["tags-1"],"license":"license-value","language":"language-value","image":"image-value","pageType":"pageType-value"}}
+            {"metadata":{"title":"title-value","author":"author-value","url":"url-value","hostname":"hostname-value","description":"description-value","sitename":"sitename-value","date":"2026-10-08","categories":["categories-1","categories-2"],"tags":["tags-1"],"license":"license-value","language":"language-value","image":"image-value","pageType":"pageType-value"}}
             """u8);
 
         var metadata = result.Metadata!;
@@ -186,7 +185,7 @@ public sealed class ResponseTests
         Assert.Equal("hostname-value", metadata.Hostname);
         Assert.Equal("description-value", metadata.Description);
         Assert.Equal("sitename-value", metadata.Sitename);
-        Assert.Equal(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero), metadata.Date);
+        Assert.Equal("2026-10-08", metadata.Date);
         Assert.Equal(["categories-1", "categories-2"], metadata.Categories);
         Assert.Equal(["tags-1"], metadata.Tags);
         Assert.Equal("license-value", metadata.License);
@@ -227,12 +226,43 @@ public sealed class ResponseTests
         {
             var failure = Assert.Throws<TrafilaturaException>(
                 () => Extractor.ExtractFromBytes(emptyPage));
-            Assert.Equal(TrafilaturaErrorKind.OutputTooShort, failure.Kind);
+            Assert.Equal(TrafilaturaErrorKind.MissingDocument, failure.Kind);
 
             var result = Extractor.ExtractFromBytes(Fixtures.Article, AllFields);
             Assert.Equal("Research results", result.Metadata!.Title);
             Assert.NotEmpty(result.ContentText!);
         }
+    }
+
+    /// <summary>
+    /// A metadata member the request did not name stays null, even when the options turn on the work
+    /// that produces metadata: a blacklist and an essential-metadata check both extract it.
+    /// </summary>
+    [Fact]
+    public void Metadata_Stays_Null_When_Not_Requested_Even_With_Blacklist_Or_Essential_Metadata()
+    {
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions
+        {
+            ResponseFields = ["contentText"],
+            BlacklistedAuthors = ["Ada Lovelace"],
+            HasEssentialMetadata = true,
+            Url = "https://example.org/article",
+        });
+
+        Assert.NotNull(result.ContentText);
+        Assert.Null(result.Metadata);
+    }
+
+    /// <summary>
+    /// Comments that are excluded come back as an empty string when they were requested, not as null,
+    /// which would read as "not requested".
+    /// </summary>
+    [Fact]
+    public void Comments_Text_Is_Empty_When_Comments_Are_Excluded()
+    {
+        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { ExcludeComments = true });
+
+        Assert.Equal(string.Empty, result.CommentsText);
     }
 
     /// <summary>
@@ -279,11 +309,7 @@ public sealed class ResponseTests
         Assert.Equal(ReadText(metadata, "hostname") ?? string.Empty, actual.Hostname);
         Assert.Equal(ReadText(metadata, "description") ?? string.Empty, actual.Description);
         Assert.Equal(ReadText(metadata, "sitename") ?? string.Empty, actual.Sitename);
-        Assert.Equal(
-            ReadText(metadata, "date") is { } date
-                ? DateTimeOffset.Parse(date, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
-                : null,
-            actual.Date);
+        Assert.Equal(ReadText(metadata, "date"), actual.Date);
         Assert.Equal(ReadTexts(metadata, "categories"), actual.Categories);
         Assert.Equal(ReadTexts(metadata, "tags"), actual.Tags);
         Assert.Equal(ReadText(metadata, "license") ?? string.Empty, actual.License);

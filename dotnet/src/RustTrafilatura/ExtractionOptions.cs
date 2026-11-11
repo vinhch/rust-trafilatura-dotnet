@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace RustTrafilatura;
 
-/// <summary>How much of the page the extractor keeps, mirroring the core's `ExtractionFocus`.</summary>
+/// <summary>How much of the page the extractor keeps, mirroring the core's `Focus`.</summary>
 /// <remarks>
 /// The wire names are stated twice on purpose, once per asset: `[JsonStringEnumMemberName]` exists from
 /// `net9.0` on, and the `net8.0` asset states the same names in HeaderContext.cs's converters. Both
@@ -27,7 +27,7 @@ public enum ExtractionFocus
     FavorPrecision,
 }
 
-/// <summary>How hard the extractor looks for a publication date, mirroring the core's `HtmlDateMode`.</summary>
+/// <summary>How hard the extractor looks for a publication date, mirroring the `htmlDateMode` option. The core reads two of its values from `Config::extensive_date_search`.</summary>
 public enum HtmlDateMode
 {
     /// <summary>The core's default.</summary>
@@ -75,8 +75,8 @@ public sealed class ExtractionOptions
 {
     /// <summary>
     /// The URL the page was fetched from, or null or an empty string for "no URL". The extraction
-    /// uses it for the metadata this document cannot carry itself. Any string is accepted; one that is not an
-    /// absolute URL is ignored without an error.
+    /// uses it for the metadata this document cannot carry itself. Any string is passed to the core. With
+    /// `IncludeImages`, an image source or URL that the core cannot join gives `InvalidValue`.
     /// This is a header key rather than an option, which is why it is not serialized here.
     /// </summary>
     [JsonIgnore]

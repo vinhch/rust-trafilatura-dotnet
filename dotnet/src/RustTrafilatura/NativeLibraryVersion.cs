@@ -2,7 +2,7 @@ namespace RustTrafilatura;
 
 /// <summary>
 /// The version document of a loaded native library, parsed: the ABI it implements, the JSON schema it
-/// speaks, the version of this binding's own crate and the version of the `rust-trafilatura` core it
+/// speaks, the version of this binding's own crate and the version of the `trafilatura-rust` core it
 /// links.
 /// </summary>
 /// <remarks>
@@ -22,7 +22,7 @@ public sealed class NativeLibraryVersion
     /// <summary>The version of `rust-trafilatura-ffi`, the crate this binding is built from.</summary>
     public string? Crate { get; init; }
 
-    /// <summary>The version of the `rust-trafilatura` core the library links.</summary>
+    /// <summary>The version of the `trafilatura-rust` core the library links.</summary>
     public string? Core { get; init; }
 
     /// <summary>The document as the library sent it, verbatim.</summary>

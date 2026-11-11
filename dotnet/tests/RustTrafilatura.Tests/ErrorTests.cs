@@ -20,21 +20,93 @@ public sealed class ErrorTests
     }
 
     /// <summary>
-    /// A zero-length payload, which is a valid request whose extraction the core rejects. It reaches
-    /// this error with the core's defaults, where <c>minOutputSize</c> is 1: a parseable
-    /// one-paragraph page is kept, so the counts in the context are the payload's.
+    /// A zero-length payload, which is a valid request whose extraction the core rejects as an empty
+    /// tree. The rejection carries no context.
     /// </summary>
     [Fact]
-    public void InsufficientContent_Throws_TrafilaturaException()
+    public void EmptyPayload_Throws_MissingDocument()
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(ReadOnlyMemory<byte>.Empty));
 
-        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, exception.Kind);
-        Assert.Equal("text and comments are not long enough: 0 0", exception.Message);
+        Assert.Equal(TrafilaturaErrorKind.MissingDocument, exception.Kind);
+        Assert.Equal("page rejected: empty tree", exception.Message);
+        Assert.Null(exception.ContextJson);
+    }
 
+    /// <summary>
+    /// A page without the date and the URL that <c>HasEssentialMetadata</c> asks for is rejected, and the
+    /// context names the missing fields in the core's check order.
+    /// </summary>
+    [Fact]
+    public void Missing_Metadata_Lists_The_Missing_Fields_In_Order()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
+            Fixtures.NoDateHtml,
+            new ExtractionOptions { HasEssentialMetadata = true }));
+
+        Assert.Equal(TrafilaturaErrorKind.MissingMetadata, exception.Kind);
+        Assert.Equal("""{"missing":["date","url"]}""", exception.ContextJson);
+    }
+
+    /// <summary>
+    /// A minimum text size the page does not reach is rejected, and the context carries both counts the
+    /// core measured.
+    /// </summary>
+    [Fact]
+    public void Too_Short_Carries_Text_And_Comment_Counts()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(
+            Fixtures.Article,
+            new ExtractionOptions { Config = new ExtractionConfig { MinOutputSize = 10000 } }));
+
+        Assert.Equal(TrafilaturaErrorKind.OutputTooShort, exception.Kind);
         using var context = JsonDocument.Parse(exception.ContextJson!);
-        Assert.Equal(0, context.RootElement.GetProperty("content").GetInt32());
-        Assert.Equal(0, context.RootElement.GetProperty("comments").GetInt32());
+        Assert.True(context.RootElement.GetProperty("textChars").GetInt64() > 0);
+        Assert.Equal(0, context.RootElement.GetProperty("commentsChars").GetInt64());
+    }
+
+    /// <summary>
+    /// A child limit the body exceeds is rejected, and the context names the limit and the child count.
+    /// </summary>
+    [Fact]
+    public void Tree_Limit_Names_The_Limit_And_Children()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(
+            Fixtures.Article,
+            new ExtractionOptions { MaxTreeSize = 1 }));
+
+        Assert.Equal(TrafilaturaErrorKind.OutputTreeTooLong, exception.Kind);
+        using var context = JsonDocument.Parse(exception.ContextJson!);
+        Assert.Equal("maxTreeSize", context.RootElement.GetProperty("limit").GetString());
+        Assert.True(context.RootElement.GetProperty("children").GetInt64() > 1);
+    }
+
+    /// <summary>
+    /// A page whose locale names another language than the target is rejected as an HTML language
+    /// mismatch.
+    /// </summary>
+    [Fact]
+    public void Html_Lang_Mismatch_Is_Html_Language()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
+            Fixtures.GermanLocaleHtml,
+            new ExtractionOptions { TargetLanguage = "en" }));
+
+        Assert.Equal(TrafilaturaErrorKind.HtmlLanguage, exception.Kind);
+    }
+
+    /// <summary>
+    /// An image source the core cannot join to the page URL is rejected as an invalid value, not extracted
+    /// without the image.
+    /// </summary>
+    [Fact]
+    public void Unparseable_Image_Url_Is_Invalid_Value()
+    {
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
+            Fixtures.BrokenImageHtml,
+            new ExtractionOptions { IncludeImages = true, Url = "https://example.org/" }));
+
+        Assert.Equal(TrafilaturaErrorKind.InvalidValue, exception.Kind);
     }
 
     /// <summary>
@@ -69,7 +141,7 @@ public sealed class ErrorTests
         Assert.Equal(1, code);
         using var document = JsonDocument.Parse(response);
         Assert.Equal(
-            "OutputTooShort",
+            "MissingDocument",
             document.RootElement.GetProperty("error").GetProperty("kind").GetString());
     }
 
@@ -114,18 +186,16 @@ public sealed class ErrorTests
     {
         string[] contract =
         [
-            "Io",
-            "UnsupportedCharset",
-            "CharsetNotDetected",
             "MissingDocument",
             "HtmlLanguage",
-            "RequiredTitle",
-            "RequiredUrl",
-            "RequiredDate",
+            "MissingMetadata",
             "OutputTreeTooLong",
             "OutputTooShort",
-            "DuplicateBody",
+            "InputTooLarge",
             "WrongLanguage",
+            "DuplicateBody",
+            "BlacklistedUrl",
+            "InvalidValue",
             "InvalidRequest",
             "Panic",
             "Unknown",

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -106,7 +105,7 @@ internal static class Response
         var hostname = string.Empty;
         var description = string.Empty;
         var sitename = string.Empty;
-        DateTimeOffset? date = null;
+        string? date = null;
         IReadOnlyList<string> categories = Array.Empty<string>();
         IReadOnlyList<string> tags = Array.Empty<string>();
         var license = string.Empty;
@@ -156,7 +155,7 @@ internal static class Response
             else if (reader.ValueTextEquals("date"u8))
             {
                 reader.Read();
-                date = ReadDate(ref reader);
+                date = ReadStringValue(ref reader);
             }
             else if (reader.ValueTextEquals("categories"u8))
             {
@@ -232,15 +231,6 @@ internal static class Response
         reader.Skip();
         return null;
     }
-
-    /// <summary>
-    /// Null is "the page carries no date"; any other value is an RFC 3339 timestamp, parsed with
-    /// round-trip style so the offset the library reported survives.
-    /// </summary>
-    private static DateTimeOffset? ReadDate(ref Utf8JsonReader reader) =>
-        ReadStringValue(ref reader) is { } date
-            ? DateTimeOffset.Parse(date, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
-            : null;
 
     /// <summary>
     /// The strings an array member holds, or the shared empty array when the member is absent, is not

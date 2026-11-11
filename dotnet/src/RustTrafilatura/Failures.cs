@@ -52,18 +52,16 @@ internal static class Failures
     /// <summary>Maps the wire kind onto the enum, and anything this client does not know onto <see cref="TrafilaturaErrorKind.Unknown"/>.</summary>
     private static TrafilaturaErrorKind ReadKind(string? kind) => kind switch
     {
-        "Io" => TrafilaturaErrorKind.Io,
-        "UnsupportedCharset" => TrafilaturaErrorKind.UnsupportedCharset,
-        "CharsetNotDetected" => TrafilaturaErrorKind.CharsetNotDetected,
         "MissingDocument" => TrafilaturaErrorKind.MissingDocument,
         "HtmlLanguage" => TrafilaturaErrorKind.HtmlLanguage,
-        "RequiredTitle" => TrafilaturaErrorKind.RequiredTitle,
-        "RequiredUrl" => TrafilaturaErrorKind.RequiredUrl,
-        "RequiredDate" => TrafilaturaErrorKind.RequiredDate,
+        "MissingMetadata" => TrafilaturaErrorKind.MissingMetadata,
         "OutputTreeTooLong" => TrafilaturaErrorKind.OutputTreeTooLong,
         "OutputTooShort" => TrafilaturaErrorKind.OutputTooShort,
-        "DuplicateBody" => TrafilaturaErrorKind.DuplicateBody,
+        "InputTooLarge" => TrafilaturaErrorKind.InputTooLarge,
         "WrongLanguage" => TrafilaturaErrorKind.WrongLanguage,
+        "DuplicateBody" => TrafilaturaErrorKind.DuplicateBody,
+        "BlacklistedUrl" => TrafilaturaErrorKind.BlacklistedUrl,
+        "InvalidValue" => TrafilaturaErrorKind.InvalidValue,
         "InvalidRequest" => TrafilaturaErrorKind.InvalidRequest,
         "Panic" => TrafilaturaErrorKind.Panic,
         _ => TrafilaturaErrorKind.Unknown,

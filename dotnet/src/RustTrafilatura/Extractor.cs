@@ -10,7 +10,7 @@ public static class Extractor
 {
     /// <summary>
     /// The version document of the loaded native library, parsed: the ABI it implements, the JSON schema
-    /// it speaks, the version of this binding's own crate and the version of the `rust-trafilatura` core
+    /// it speaks, the version of this binding's own crate and the version of the `trafilatura-rust` core
     /// it links.
     /// </summary>
     /// <remarks>
@@ -42,7 +42,7 @@ public static class Extractor
     /// The page's bytes: its whole length, a slice of an array, a pooled rent or any other memory
     /// view. Bytes that are not memory-backed, such as a `stackalloc` buffer or unmanaged memory, go
     /// to <see cref="ExtractFromSpan"/> instead. An empty buffer, which is what a null array becomes,
-    /// is a valid request that the core itself rejects as too short.
+    /// is a valid request that the core rejects as `MissingDocument`.
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
     /// <exception cref="ContractVersionMismatchException">
@@ -70,7 +70,7 @@ public static class Extractor
     /// <param name="html">
     /// The page's bytes: an array (through the implicit conversion), a slice of one, a pooled rent, a
     /// span taken from a memory view, a `stackalloc` buffer, or unmanaged memory behind a pointer. An
-    /// empty span is a valid request that the core itself rejects as too short.
+    /// empty span is a valid request that the core rejects as `MissingDocument`.
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
     /// <exception cref="ContractVersionMismatchException">
