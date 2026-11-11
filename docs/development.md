@@ -72,8 +72,8 @@ action, whose pin is a branch tip Dependabot cannot move.
 | Workflow | Trigger | Runs |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push and pull request to `main` | `.github/workflows/_ci.yml` |
-| `.github/workflows/_ci.yml` | called by `ci.yml` and `release.yml` | `test` on Ubuntu and Windows: `scripts/version.sh --check`, `scripts/build.sh`, `scripts/test.sh --report`; `docs` on Ubuntu: `scripts/docs-check.sh`; `Aot_Publish_Extracts_A_Page` for `win-x64` and `linux-x64`: publishes the AOT consumer with IL2026 and IL3050 as errors and runs it |
-| `.github/workflows/quality.yml` | pull requests touching `rust/`, and weekly | `core-untouched` (the core builds unchanged at its pinned commit), `mutants` (`cargo mutants`, in-diff on PRs), `bench` (`scripts/bench.sh`), `supply-chain` (`cargo deny check advisories licenses bans`) |
+| `.github/workflows/_ci.yml` | called by `ci.yml` and `release.yml` | `test` on Ubuntu, Windows and macOS: `scripts/version.sh --check`, `scripts/build.sh`, `scripts/test.sh --report`; `docs` on Ubuntu: `scripts/docs-check.sh`; `Aot_Publish_Extracts_A_Page` for `win-x64` and `linux-x64`: publishes the AOT consumer with IL2026 and IL3050 as errors and runs it |
+| `.github/workflows/quality.yml` | pull requests touching `rust/`, and weekly | `mutants` (`cargo mutants`, in-diff on PRs), `bench` (`scripts/bench.sh`), `supply-chain` (`cargo deny check advisories licenses bans`) |
 | `.github/workflows/release.yml` | a `v*` tag, or `workflow_dispatch` as a rehearsal | `guard` (`scripts/version.sh --check --tag`), `_ci.yml`, `native` (all five RIDs), `package` (`scripts/release.sh`); on a tag only, the attestation and `github-release` |
 | `.github/workflows/publish.yml` | `workflow_dispatch` only, environment `nuget` | downloads a release's package, verifies its attestation and pushes it with `scripts/release.sh --push-only`; `dry_run` stops before the push |
 

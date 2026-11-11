@@ -101,7 +101,7 @@ worker thread with that stack (`rust/src/lib.rs::extraction_stack`); elsewhere i
 thread, so the host's threads have to provide it. Rust's own test runs the extraction on 768 KiB
 (`rust/tests/abi_hardening.rs::extraction_fits_a_768_kib_stack`). The test that enforces the bound
 on the host is `dotnet/tests/RustTrafilatura.Tests/StackTests.cs::Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB`,
-which runs on every host CI runs (Linux, Windows) and reads the stack with
+which runs on every host CI runs (Linux, Windows, macOS; macOS skips it on .NET 8) and reads the stack with
 `dotnet/tests/RustTrafilatura.Tests/ThreadStack.cs::CurrentSizeBytes`. The table records no CI number.
 
 | Host | .NET | Default stack of a new or thread-pool thread | Source |

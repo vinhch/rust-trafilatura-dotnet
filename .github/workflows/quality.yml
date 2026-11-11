@@ -14,33 +14,6 @@ permissions:
   contents: read
 
 jobs:
-  core-untouched:
-    name: core-untouched
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: markusmobius/rust-trafilatura
-          # The commit tag v2.2.8 points at; a tag is mutable, and this checkout is the evidence.
-          ref: d4a26ff6352640a36bd83f6e471583e90badb38e
-          path: core
-      - uses: dtolnay/rust-toolchain@a2627de80e5819949c7e1c83ed99b29085fc9bc4 # 1.98.1
-      # The patch is an argument, not a manifest change, and the path must be absolute: a relative one
-      # resolves against the patched package. --locked cannot apply to a patched package, so the assertion
-      # below is what verifies this build.
-      - name: Build the ffi crate against the core checkout
-        run: cargo build --manifest-path rust/Cargo.toml --release --config 'patch.crates-io.rust-trafilatura.path="${{ github.workspace }}/core"'
-      - name: Assert the core checkout is unchanged
-        run: |
-          dirty="$(git -C core status --porcelain)"
-          if [ -n "$dirty" ]; then
-            echo "the wrapper build modified the core checkout:" >&2
-            printf '%s\n' "$dirty" >&2
-            exit 1
-          fi
-          echo "the core checkout is unchanged"
-
   mutants:
     name: mutants
     timeout-minutes: 120

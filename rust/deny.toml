@@ -12,33 +12,27 @@
 allow = [
     "0BSD",
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
-    "ICU",
     "MIT",
-    "Python-2.0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
 ]
 # Why these and not others: every one of them is permissive. They require attribution and the notice
 # text at most, never source disclosure or a change to this repository's terms. This repository's own
-# code is MIT and the core crate it links is dual-licensed Apache-2.0 OR MIT, so the crate's `license`
-# field states MIT and the remaining expressions below belong to the dependencies the allow-list
-# admits. That is the same posture the core crate takes: the graph is its graph, since the ffi crate
-# adds only serde, serde_json, chrono and mimalloc, whose licenses (MIT, Apache-2.0, Unlicense) are in
-# the list already. An allowance no crate
-# uses is reported as `warning[license-not-encountered]` and still reports `licenses ok`, so a stale
-# entry costs a line in the log rather than a red job.
+# code is MIT and the core crate it links is Apache-2.0 only, so the crate's `license` field states
+# MIT and the remaining expressions below belong to the dependencies the allow-list admits. The ffi
+# crate adds only serde, serde_json and mimalloc, whose licenses (MIT, Apache-2.0, Unlicense) are in
+# the list already. An allowance no crate uses is reported as `warning[license-not-encountered]` and
+# still reports `licenses ok`, so a stale entry costs a line in the log rather than a red job.
 
 [advisories]
 # No settings of its own. An `ignore` entry here would be an accepted risk and each one would need its
 # reason beside it, so the honest state is cargo-deny's own defaults with nothing suppressed.
 
 [bans]
-# Duplicates are reported, not failed: the graph carries several versions of phf, html5ever, tendril,
-# markup5ever, string_cache, syn and windows-sys, all chosen inside the core crate's HTML and ICU
-# stack rather than by this repository, so a red job here would be unactionable.
+# Duplicates are reported, not failed: a version choice inside the core crate's dependency graph is
+# not this repository's to fix, so a red job here would be unactionable.
 multiple-versions = "warn"
 # A `*` requirement in this crate's own manifest is a dependency that floats without a review point.
 wildcards = "deny"

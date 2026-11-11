@@ -40,8 +40,9 @@ public sealed class StackTests
     {
         // On macOS, .NET 8 gives a thread 512 KiB, below what the extraction needs. The native library
         // runs the extraction on its own 1 MiB worker there, so the managed default is not the bound
-        // that matters on that OS.
-        if (OperatingSystem.IsMacOS())
+        // that matters on that OS. .NET 9 and later give 1.5 MiB on macOS (dotnet/runtime PR #98007),
+        // so the bound is enforced there like on the other hosts.
+        if (OperatingSystem.IsMacOS() && Environment.Version.Major < 9)
         {
             Assert.Skip(".NET 8 defaults to 512 KiB on macOS; the native library runs extraction on a 1 MiB worker there");
         }

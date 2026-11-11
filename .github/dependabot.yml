@@ -18,7 +18,7 @@ updates:
         update-types:
           - minor
           - patch
-    # `rust-trafilatura` is covered on purpose by the pattern above. Its pin is exact, so merging
+    # `trafilatura-rust` is covered on purpose by the pattern above. Its pin is exact, so merging
     # that bump also needs the steps of the "Core dependency bump" row in AGENTS.md, not a routine merge.
 
   - package-ecosystem: nuget
