@@ -1,5 +1,7 @@
 # Binding performance: UniFFI techniques and the managed byte surface
 
+Record of the binding over the old core `rust-trafilatura` 2.2.8; it does not describe the current core.
+
 This evaluates the binding layer of this repository against what UniFFI does per call, against
 UniFFI's documented practice, and against the maintainer's hypothesis that `ReadOnlyMemory<byte>` or
 `ReadOnlySpan<byte>` beats `byte[]` on the public surface. It changes no product code, manifest or

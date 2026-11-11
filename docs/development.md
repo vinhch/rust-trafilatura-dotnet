@@ -14,7 +14,7 @@ How to build, test, benchmark and release-check this repository, and what CI run
 | `cargo-mutants` | latest | the mutation runs in `.github/workflows/quality.yml` |
 | `cargo-deny` | latest | the supply-chain job in `.github/workflows/quality.yml` |
 | git | any | `scripts/corpus.sh`, which fetches the benchmark pages once |
-| clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer |
+| clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer; from a Bash shell on Windows, `C:\Program Files (x86)\Microsoft Visual Studio\Installer` (where `vswhere.exe` lives) must be on `PATH`, or the publish fails with MSB3073 |
 
 The SDK is pinned in `global.json`, which also opts the test projects into Microsoft.Testing.Platform.
 

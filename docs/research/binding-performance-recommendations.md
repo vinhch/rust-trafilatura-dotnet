@@ -1,5 +1,7 @@
 # Binding performance: ranked recommendations
 
+Record of the binding over the old core `rust-trafilatura` 2.2.8; it does not describe the current core.
+
 Companion to `binding-performance.md`, which holds the evaluation these recommendations come from.
 The split exists because the evaluation plus a sketch per recommendation passes what one page holds;
 the reasoning, measurements and citations stay in the main file, and only the actionable list is here.

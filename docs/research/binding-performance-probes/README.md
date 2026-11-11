@@ -1,5 +1,7 @@
 # Binding-performance probes
 
+Record of the binding over the old core `rust-trafilatura` 2.2.8; it does not describe the current core.
+
 The committed harness behind the `compiled` rows of `../binding-performance.md` and
 `../binding-performance-recommendations.md`. Each project is a scratch-grade probe kept in the
 repository so the record is reproducible: a statement labelled `compiled` in those documents names a

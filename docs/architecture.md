@@ -109,8 +109,8 @@ which runs on every host CI runs (Linux, Windows, macOS; macOS skips it on .NET 
 | Windows x64 | 8, 10 | 1572864 (1.5 MiB) | OS-inherited: the `dotnet.exe` PE stack reserve; the runtime passes 0 to `CreateThread` (vm/threads.cpp in dotnet/runtime) |
 | Linux glibc x64, arm64 | 8, 10 | 8388608 (8 MiB) at `ulimit -s 8192` | glibc follows `RLIMIT_STACK`, and the runtime sets nothing. The bound holds while the soft limit is at least 1 MiB. When `RLIMIT_STACK` is unlimited, glibc uses 2 MiB on most architectures (man7 `pthread_create(3)`; not checked in glibc source for arm64) |
 | macOS x64, arm64 | 8 | 524288 (512 KiB) | OS-inherited: the libpthread default. Below 1 MiB, so the macOS worker covers it |
-| macOS x64, arm64 | 10 | 1572864 (1.5 MiB) | set by the runtime (`pal.cpp`, `HOST_APPLE`) |
+| macOS x64, arm64 | 9, 10 | 1572864 (1.5 MiB) | set by the runtime (`pal.cpp`, `HOST_APPLE`, dotnet/runtime PR #98007, from 9.0.0) |
 
-Sources are the dotnet/runtime release tags v8.0.33 and v10.0.14. Overrides: `DOTNET_DefaultStackSize`
+Sources are the dotnet/runtime release tags v8.0.33 and v10.0.14, except that the .NET 9 macOS value cites the pull request that set it. Overrides: `DOTNET_DefaultStackSize`
 (.NET 8); `DOTNET_Thread_DefaultStackSize` and the runtimeconfig `System.Threading.DefaultStackSize`
-(.NET 10). Gap: the macOS value comes from the libpthread main branch, not a release build.
+(.NET 10). The macOS .NET 8 value is the libpthread default: the release tag libpthread-539.100.4 of apple-oss-distributions/libpthread defines `DEFAULT_STACK_SIZE` as 512 * 1024 in src/pthread.c.

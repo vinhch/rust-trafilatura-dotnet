@@ -1,7 +1,7 @@
 # Release evidence
 
-What the release checks are worth on branch `feat/dotnet-bindings`. Every command
-below ran for this page, on the host and date the page records, at the tree it records. A number
+What the 0.0.1 release checks are worth on branch `feat/dotnet-bindings`. Every command
+below, up to the 0.3.0 section, ran for this page, on the host and date the page records, at the tree it records. A number
 that could not be re-measured says where it came from instead of being presented as fresh. A
 check this host cannot run names the CI job that owns it and says plainly that nothing has
 verified it.
@@ -368,3 +368,12 @@ compile failed on a member the current surface has — until the restore ran wit
 empty package folder or clear the cached entry, or it measures the previous package.
 
 Host and date: this host, 2026-10-10.
+
+## 0.3.0 (pending rehearsal)
+
+This section is filled from the release rehearsal and the CI run on the pull request; it records only commands that ran and the run URLs that show them. It will hold:
+
+- the core: `trafilatura-rust` 0.2.0, as `rt_version` reports it
+- the five RIDs and the runner image each one built on (`windows-latest`, `ubuntu-22.04`, `macos-15-intel`, `macos-15`)
+- the rehearsal run URL (`release.yml` started by hand from the branch) and the CI run URL with the macOS leg, including that `Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB` passed on net10.0 and skipped on net8.0 there
+- the results of the AOT publish and of the package tests
