@@ -76,10 +76,7 @@ internal static partial class Interop
             if (cancellationToken.CanBeCanceled)
             {
                 cancel = CancelHandle.Create();
-                if (!ReferenceEquals(cancel, CancelHandle.None))
-                {
-                    registration = cancellationToken.UnsafeRegister(static state => Interop.RtCancel((CancelHandle)state!), cancel);
-                }
+                registration = cancellationToken.UnsafeRegister(static state => Interop.RtCancel((CancelHandle)state!), cancel);
             }
 
             unsafe

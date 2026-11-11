@@ -144,6 +144,7 @@ fn cancelled_calls_return_the_live_buffer_counter_to_baseline() {
     let _guard = lock_counter();
     let baseline = live_buffers();
     let handle = rt_cancel_new();
+    assert!(!handle.is_null(), "rt_cancel_new must hand out a handle");
     unsafe { rt_cancel(handle) };
 
     for call in 0..CANCELLED_CALLS {

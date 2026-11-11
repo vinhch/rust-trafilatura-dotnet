@@ -14,7 +14,7 @@ internal static class BytesCallSites
     {
         // A byte array the caller already holds: it converts to ReadOnlyMemory<byte> implicitly, so
         // the call site that compiled against the array overload still compiles and still costs no
-        // allocation for the conversion. The cancellable form is written here with the token last.
+        // allocation for the conversion.
         byte[] page = "Content"u8.ToArray();
         CancellationToken token = CancellationToken.None;
         ExtractionResult fromArray = Extractor.ExtractFromBytes(page, cancellationToken: token);

@@ -74,6 +74,9 @@ internal sealed class CancelHandle : SafeHandle
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        AfterRelease?.Invoke();
+        if (disposing)
+        {
+            AfterRelease?.Invoke();
+        }
     }
 }
