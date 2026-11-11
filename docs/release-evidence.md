@@ -369,11 +369,34 @@ empty package folder or clear the cached entry, or it measures the previous pack
 
 Host and date: this host, 2026-10-10.
 
-## 0.3.0 (pending rehearsal)
+## 0.3.0
 
-This section is filled from the release rehearsal and the CI run on the pull request; it records only commands that ran and the run URLs that show them. It will hold:
+Recorded from GitHub Actions, not from this host. The tree is `8b1e752` on branch `phase-4-release`; the runs are on 2026-11-11.
 
-- the core: `trafilatura-rust` 0.2.0, as `rt_version` reports it
-- the five RIDs and the runner image each one built on (`windows-latest`, `ubuntu-22.04`, `macos-15-intel`, `macos-15`)
-- the rehearsal run URL (`release.yml` started by hand from the branch) and the CI run URL with the macOS leg, including that `Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB` passed on net10.0 and skipped on net8.0 there
-- the results of the AOT publish and of the package tests
+- Rehearsal: [`release.yml` run 43048460315](https://github.com/vinhch/rust-trafilatura-dotnet/actions/runs/43048460315), started by hand from the branch, conclusion success. `guard`, `native` for all five RIDs, the nested `_ci.yml` jobs and `package` passed; `github-release` was skipped, as it is for any run that is not a tag.
+- Pull request: [`ci.yml` run 43042312245](https://github.com/vinhch/rust-trafilatura-dotnet/actions/runs/43042312245) and [`quality.yml` run 43042311723](https://github.com/vinhch/rust-trafilatura-dotnet/actions/runs/43042311723) on pull request 19: `test` on ubuntu, windows and macOS, `docs`, both AOT publishes, `bench`, `mutants` and `supply-chain` passed. The first runs of `Aot_Publish_Extracts_A_Page (linux-x64)` failed at `apt-get` with `Temporary failure resolving 'azure.archive.ubuntu.com'`, a runner DNS failure on a step this branch does not change; the job passed on a later run.
+- Core: `trafilatura-rust` 0.2.0 from `rust/Cargo.lock`. `ExtractionTests.cs::LibraryVersion_Matches_TheCrateAndCoreItWasBuiltFrom` passed on every `test` job; it compares what `rt_version` reports with the lockfile and the manifest.
+
+Native builds, by the runner label in `release.yml`:
+
+| RID | Runner |
+| --- | --- |
+| `win-x64` | `windows-latest` |
+| `linux-x64` | `ubuntu-22.04` |
+| `linux-arm64` | `ubuntu-22.04`, cross-linked |
+| `osx-x64` | `macos-15-intel` |
+| `osx-arm64` | `macos-15` |
+
+macOS test leg (`macos-latest`, image `macos-26-arm64`), from the rehearsal log:
+
+- Rust: 80 tests passed without `test-hooks` and 85 with it, none skipped. `cancel_from_another_thread_stops_a_large_page` took 9.4 s and 9.8 s.
+- net8.0: 64 tests, 63 passed, 1 skipped, which is `StackTests.Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB`: the .NET 8 macOS default stack is 512 KiB, below the bound, and the worker covers it.
+- net10.0: 64 tests, 64 passed, including that stack test.
+
+Package: `package` packed `RustTrafilatura.0.3.0.nupkg` and ran the package tests against it: 6 passed, 0 failed, 0 skipped. They include the `MIT AND Apache-2.0` expression read from the packed `.nuspec`, `CHANGELOG.md` and `THIRD-PARTY-NOTICES.md` at the package root, and the README's title line.
+
+AOT: `Aot_Publish_Extracts_A_Page` passed for `win-x64` (`windows-latest`) and `linux-x64` (`ubuntu-latest`) in the rehearsal and in the pull request run, with IL2026 and IL3050 as errors.
+
+Timing tests (`docs/phase-plan.md` F-15): the `test` jobs on ubuntu, windows and macOS passed in both runs, and the suites include the two timing-dependent cancel tests. The one duration the logs show is the cross-thread native cancel test on macOS, 9.4 s and 9.8 s.
+
+Not run: nothing publishes in a rehearsal, so the NuGet push and the attestation are not covered here.

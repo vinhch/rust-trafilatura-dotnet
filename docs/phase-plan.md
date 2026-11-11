@@ -49,11 +49,9 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-3 | `Metadata.Language` and `WrongLanguage`: reachable once the crate closes its OI-4 (language detection). | trafilatura-rust OI-4 |
 | F-4 | Comments HTML: the crate records it as its F-80. | trafilatura-rust F-80 |
 | F-7 | `DuplicateBody` is unreachable from `bare_extraction`: duplicate detection needs a `DedupCache` the binding does not pass. | A consumer asks for cross-call dedup |
-| F-8 | The macOS worker selected by `extraction_stack()` runs on no CI host. Add a macOS job, or a test that runs the selected stack on every OS. | Phase 4 evidence commit |
 | F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 6 |
 | F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
 | F-14 | The null-handle branch of `CancelHandle.Create()` has no test: it needs the native `rt_cancel_new` to fail. Add the test once the native side can be forced to fail. | Phase 5 |
-| F-15 | The cross-thread native cancel test and the managed latency test depend on timing. The latency floor is 200 ms; the development host measured 384 ms. The first GitHub CI run passed both on ubuntu-latest and windows-latest; keep watching them on later runs. The cross-thread test takes 8 to 16 s in debug. | Phase 4 evidence commit |
 | F-17 | `Failures.Read` throws `InvalidOperationException` when the response root is a JSON array. Make it a clear error for a malformed response. Predates phase 3. | Phase 5 |
 | F-18 | `scripts/docs-check.ps1` walks up from each `git.exe` to the first `bin\bash.exe`, which can find an unrelated `bash.exe` above a shim install. Bound the search to the install's own `bin`. | Phase 5 |
 | F-20 | `BlacklistedUrl` is declared but never raised: the wrapper never sets the core's `url_blacklist`. Add an `ExtractionOptions` member for it if a consumer needs it, or drop the kind from the table. | A consumer asks |
