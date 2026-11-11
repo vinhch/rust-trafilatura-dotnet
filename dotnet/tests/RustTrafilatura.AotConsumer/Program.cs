@@ -28,11 +28,14 @@ const string Html = """
 
 try
 {
+    // A cancellable token, so the call goes through the native cancel handle: its SafeHandle has to
+    // survive trimming and Native AOT, which an uncancellable call never exercises.
+    using var cancellation = new CancellationTokenSource();
     var result = Extractor.ExtractFromHtml(Html, new ExtractionOptions
     {
         Url = "https://example.com/news/library",
         ResponseFields = ["contentText", "metadata"],
-    });
+    }, cancellation.Token);
 
     Console.WriteLine(result.ContentText);
 

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace RustTrafilatura;
@@ -40,6 +41,27 @@ internal static class Failures
                 $"The native library returned code {code} with a response that is not JSON.",
                 contextJson: null,
                 exception);
+        }
+    }
+
+    /// <summary>
+    /// Whether the response is the `Cancelled` envelope that a cancelled call returns. Text that is not a
+    /// JSON object is not a cancel, so the caller keeps the failure it would otherwise have read.
+    /// </summary>
+    internal static bool IsCancelled(ReadOnlySpan<byte> response)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(Encoding.UTF8.GetString(response));
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.Object
+                && JsonMembers.Text(error, "kind") == "Cancelled";
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

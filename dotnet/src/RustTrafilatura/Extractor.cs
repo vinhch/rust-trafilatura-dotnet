@@ -18,7 +18,7 @@ public static class Extractor
     /// the path a caller reads to see which library is loaded, including after
     /// <see cref="ContractVersionMismatchException"/> reported that `abi` or `schemaVersion` differs. The
     /// comparison runs on the first call that extracts (see
-    /// <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions)"/>), which can catch a
+    /// <see cref="ExtractFromBytes(ReadOnlyMemory{byte}, ExtractionOptions, CancellationToken)"/>), which can catch a
     /// library that reports different numbers and cannot catch one that reports these while implementing
     /// something else, because the document is still only the library's claim. `crate` and `core` are
     /// versioned independently of `abi`, so a different version is not a mismatch and is not compared;
@@ -45,6 +45,12 @@ public static class Extractor
     /// is a valid request that the core rejects as `MissingDocument`.
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
+    /// <param name="cancellationToken">
+    /// Stops the extraction when cancelled. A token cancelled before the call throws without a native call;
+    /// one cancelled during it stops the native work at its next check; one cancelled after native returned
+    /// has no effect on the result.
+    /// </param>
+    /// <exception cref="OperationCanceledException">The token was cancelled before the call or during it. Carries <paramref name="cancellationToken"/>.</exception>
     /// <exception cref="ContractVersionMismatchException">
     /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for, or
     /// its `rt_version` answered with a code that carried no version document at all. The comparison is
@@ -55,9 +61,9 @@ public static class Extractor
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
-    public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)
+    public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return ExtractFromSpan(html.Span, options);
+        return ExtractFromSpan(html.Span, options, cancellationToken);
     }
 
     /// <summary>
@@ -73,6 +79,12 @@ public static class Extractor
     /// empty span is a valid request that the core rejects as `MissingDocument`.
     /// </param>
     /// <param name="options">The options for this page, or null for the core's own defaults.</param>
+    /// <param name="cancellationToken">
+    /// Stops the extraction when cancelled. A token cancelled before the call throws without a native call;
+    /// one cancelled during it stops the native work at its next check; one cancelled after native returned
+    /// has no effect on the result.
+    /// </param>
+    /// <exception cref="OperationCanceledException">The token was cancelled before the call or during it. Carries <paramref name="cancellationToken"/>.</exception>
     /// <exception cref="ContractVersionMismatchException">
     /// The native library reports an `abi` or `schemaVersion` this assembly was not compiled for, or
     /// its `rt_version` answered with a code that carried no version document at all. The comparison is
@@ -83,11 +95,12 @@ public static class Extractor
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
-    public static ExtractionResult ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)
+    public static ExtractionResult ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         LibraryContract.Ensure();
 
-        return Interop.Extract(Request.Header(options), html, Response.Read);
+        return Interop.Extract(Request.Header(options), html, Response.Read, cancellationToken);
     }
 
     /// <summary>
@@ -96,17 +109,24 @@ public static class Extractor
     /// detection runs on it; the byte entry points run all three. An unpaired surrogate in
     /// <paramref name="html"/> becomes U+FFFD before the call.
     /// </summary>
-    /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
-    /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions)"/> makes, run here before the call.</exception>
+    /// <param name="html">The page as text. It is encoded to UTF-8 and sent as text; null throws <see cref="ArgumentNullException"/> before the token is checked.</param>
+    /// <param name="options">The options for this page, or null for the core's own defaults.</param>
+    /// <param name="cancellationToken">
+    /// Stops the extraction when cancelled, with the same meaning as on <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/>.
+    /// </param>
+
+    /// <exception cref="OperationCanceledException">The token was cancelled before the call or during it. Carries <paramref name="cancellationToken"/>.</exception>
+    /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/> makes, run here before the call.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
-    public static ExtractionResult ExtractFromHtml(string html, ExtractionOptions? options = null)
+    public static ExtractionResult ExtractFromHtml(string html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(html);
+        cancellationToken.ThrowIfCancellationRequested();
         LibraryContract.Ensure();
 
-        return Interop.Extract(Request.Header(options, payloadText: true), Encoding.UTF8.GetBytes(html), Response.Read);
+        return Interop.Extract(Request.Header(options, payloadText: true), Encoding.UTF8.GetBytes(html), Response.Read, cancellationToken);
     }
 }

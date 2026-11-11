@@ -55,9 +55,9 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 
 | Function | Description |
 | --- | --- |
-| `Extractor.ExtractFromHtml(string html, ExtractionOptions? options = null)` | Extracts a page held as a string, encoding it as UTF-8 before the path below |
-| `Extractor.ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null)` | Extracts bytes that are memory-backed: a `byte[]`, a slice, a pooled rent or a memory view, none of them copied |
-| `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
+| `Extractor.ExtractFromHtml(string html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | Extracts a page held as a string, encoding it as UTF-8 before the path below |
+| `Extractor.ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | Extracts bytes that are memory-backed: a `byte[]`, a slice, a pooled rent or a memory view, none of them copied |
+| `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
 | `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
 
 ### Options
@@ -144,6 +144,31 @@ Note: a member the request did not name is null; one it named that the page has 
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
 | `Unknown` | the library reported a kind this client version does not recognise | |
+
+A cancelled call throws `OperationCanceledException`, not `TrafilaturaException`, so it has no `Kind`.
+
+### Cancellation
+
+Every entry point takes a `CancellationToken` as its last argument, and the default is a token that cannot be cancelled.
+
+- A token that is already cancelled throws `OperationCanceledException` before the native library is called, so no extraction runs.
+- A token cancelled during the call stops the native extraction at its next check, which the core makes during the parse and every 256 nodes. The call then throws `OperationCanceledException` carrying the caller's token.
+- A token cancelled after the native call returned has no effect: the call returns its result, or throws the `TrafilaturaException` the extraction produced.
+- A token that cannot be cancelled, such as `default` or `CancellationToken.None`, allocates no native handle.
+
+```csharp
+using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+try
+{
+    result = Extractor.ExtractFromBytes(page, options, cancellation.Token);
+}
+catch (OperationCanceledException)
+{
+    // The time budget ran out. The native work stopped at its next check.
+    return;
+}
+```
 
 ## Advanced Usage
 
@@ -255,7 +280,7 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   so a caller cannot catch it. A payload above 64 MiB and a header above 1 MiB are rejected before
   parsing; `MaxTreeSize` bounds the extracted tree, not the input, and is not a denial-of-service
   bound.
-- **One-shot, synchronous, no cancellation.** There is no handle to hold, no async entry point and no cancellation token.
+- One-shot and synchronous: a call blocks its thread until it returns or throws. There is no async entry point; cancellation is the `CancellationToken` parameter, described under Cancellation.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 

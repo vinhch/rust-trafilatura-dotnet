@@ -179,7 +179,9 @@ public sealed class ErrorTests
     /// the core kinds from <c>rust/src/contract.rs</c> <c>error_kind</c>, <c>InvalidRequest</c> and
     /// <c>Panic</c> from <c>rust/src/lib.rs</c>, and <see cref="TrafilaturaErrorKind.Unknown"/>. A missing or renamed member would otherwise fall
     /// through the kind switch to <c>Unknown</c> in production, turning a named failure into an
-    /// anonymous one, which no other test would notice.
+    /// anonymous one, which no other test would notice. <c>Cancelled</c> is the one wire kind with no
+    /// member: a cancelled call throws <see cref="OperationCanceledException"/> instead, so the kind
+    /// never reaches this enum.
     /// </summary>
     [Fact]
     public void Error_Kind_Enum_Matches_The_Contract()

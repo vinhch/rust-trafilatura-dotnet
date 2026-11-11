@@ -14,9 +14,10 @@ internal static class BytesCallSites
     {
         // A byte array the caller already holds: it converts to ReadOnlyMemory<byte> implicitly, so
         // the call site that compiled against the array overload still compiles and still costs no
-        // allocation for the conversion.
+        // allocation for the conversion. The cancellable form is written here with the token last.
         byte[] page = "Content"u8.ToArray();
-        ExtractionResult fromArray = Extractor.ExtractFromBytes(page);
+        CancellationToken token = CancellationToken.None;
+        ExtractionResult fromArray = Extractor.ExtractFromBytes(page, cancellationToken: token);
 
         // A null array is not an argument error any more: it converts to an empty view and reaches
         // the core, which reports its own error. The type has to be written out because null has none.
@@ -31,23 +32,24 @@ internal static class BytesCallSites
         ExtractionResult fromMemory = Extractor.ExtractFromBytes(view);
         ExtractionResult fromSliceWithOptions = Extractor.ExtractFromBytes(
             view,
-            new ExtractionOptions { ResponseFields = ["contentText"] });
+            new ExtractionOptions { ResponseFields = ["contentText"] },
+            token);
 
         // The span entry point, which is how a buffer no memory view can express arrives: a
         // `stackalloc` one here, and unmanaged memory in the block below.
         ExtractionResult fromSpan = Extractor.ExtractFromSpan(page);
-        ExtractionResult fromStackAlloc = Extractor.ExtractFromSpan(stackalloc byte[8]);
+        ExtractionResult fromStackAlloc = Extractor.ExtractFromSpan(stackalloc byte[8], null, token);
         ExtractionResult fromMemorySpan = Extractor.ExtractFromSpan(view.Span);
 
         // A string stays a string call site.
-        ExtractionResult fromString = Extractor.ExtractFromHtml("<p>hi</p>");
+        ExtractionResult fromString = Extractor.ExtractFromHtml("<p>hi</p>", null, token);
 
         // Unmanaged memory reaches the same entry point as a span rather than through an adapter type,
         // and the caller keeps ownership of the buffer. Forming the span needs unsafe at the call site.
         unsafe
         {
             byte* pointer = null;
-            ExtractionResult fromUnmanaged = Extractor.ExtractFromSpan(new ReadOnlySpan<byte>(pointer, 0));
+            ExtractionResult fromUnmanaged = Extractor.ExtractFromSpan(new ReadOnlySpan<byte>(pointer, 0), null, token);
             _ = fromUnmanaged;
         }
 

@@ -15,7 +15,10 @@ the "Change together" table in [AGENTS.md](../AGENTS.md).
    mismatch.
 3. `dotnet/src/RustTrafilatura/Request.cs::Header` serializes the options into the request header.
 4. `dotnet/src/RustTrafilatura/Interop.cs::Extract` calls `rust/src/lib.rs::rt_extract` with the
-   header and the page as raw buffers; the page is never base64-encoded or copied into a string.
+   header and the page as raw buffers; the page is never base64-encoded or copied into a string. A
+   token that can be cancelled first gets a native handle from `rust/src/lib.rs::rt_cancel_new`, held
+   by `dotnet/src/RustTrafilatura/CancelHandle.cs::CancelHandle`, and its registration calls
+   `rust/src/lib.rs::rt_cancel` when the token is cancelled.
 5. `rust/src/lib.rs::rt_extract` checks the null pointers and the header size, parses the header
    (`rust/src/contract.rs::parse_request`) and runs the extraction through
    `rust/src/lib.rs::on_worker_thread`, on the caller's thread or on a worker on macOS, behind a panic
@@ -25,6 +28,8 @@ the "Change together" table in [AGENTS.md](../AGENTS.md).
 7. The managed side reads the response straight from the native buffer
    (`dotnet/src/RustTrafilatura/Response.cs::Read`, or `dotnet/src/RustTrafilatura/Failures.cs::Read`
    on an error code), then releases the buffer with `rust/src/lib.rs::rt_free` in a `finally` block.
+   A `Cancelled` envelope from a cancelled token is thrown as `OperationCanceledException` instead
+   (`dotnet/src/RustTrafilatura/Failures.cs::IsCancelled`).
 
 ## Return codes
 
@@ -74,6 +79,12 @@ The library allocates every output buffer and hands back its pointer, length and
 caller passes that exact triple to `rust/src/lib.rs::rt_free` once; a null pointer is a no-op, and
 a second release of a live pointer is undefined behaviour. The managed side never keeps a reference
 to the native buffer past the read.
+
+The cancel handle is the one native pointer that outlives a call. `dotnet/src/RustTrafilatura/CancelHandle.cs::CancelHandle`
+is a `SafeHandle` that releases it with `rust/src/lib.rs::rt_cancel_free`. The call disposes the token's
+registration first and the handle second, so a cancel that arrives during the return finds a registration
+that is gone and never a released handle. A call whose token cannot be cancelled passes a null handle and
+allocates none.
 
 ## Input caps
 
