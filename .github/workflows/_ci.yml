@@ -53,6 +53,17 @@ jobs:
           path: artifacts/test-results/rust/*.xml,artifacts/test-results/dotnet/*.xml
           reporter: java-junit
 
+  # Ubuntu's case-sensitive filesystem fails a wrong-case path that a Windows checkout would accept.
+  docs:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the docs' repo paths and links
+        shell: bash
+        run: scripts/docs-check.sh
+
   # IsAotCompatible is a promise to a publishing consumer only if something publishes and runs one.
   Aot_Publish_Extracts_A_Page:
     name: Aot_Publish_Extracts_A_Page (${{ matrix.rid }})

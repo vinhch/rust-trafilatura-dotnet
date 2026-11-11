@@ -32,6 +32,7 @@ them prints its flags.
 | `scripts/corpus.sh` | Fetches the pinned benchmark corpus into the gitignored `dotnet/benchmarks/corpus/` | `--check` (verify instead of fetch) |
 | `scripts/version.sh` | Keeps the crate version, the lockfile entry and the package version one number | `--set <version>` (refuses dirty files; neither commits nor tags), `--check [--tag v<version>]` |
 | `scripts/release.sh` | Packs `artifacts/RustTrafilatura.<version>.nupkg` and runs the package tests against it | `--allow-partial` (pack only the staged RIDs), `--push-only` (publish the package already in `artifacts/`; used by `.github/workflows/publish.yml`) |
+| `scripts/docs-check.sh` | Checks the repo paths and relative Markdown links that the "Docs check" section names, and prints one line per broken pointer | none |
 
 Typical order: `scripts/build.sh`, then `scripts/test.sh`. `scripts/release.sh` requires all five
 RIDs to be staged unless given `--allow-partial`, and refuses a staged library that exports a
@@ -71,7 +72,7 @@ action, whose pin is a branch tip Dependabot cannot move.
 | Workflow | Trigger | Runs |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push and pull request to `main` | `.github/workflows/_ci.yml` |
-| `.github/workflows/_ci.yml` | called by `ci.yml` and `release.yml` | `test` on Ubuntu and Windows: `scripts/version.sh --check`, `scripts/build.sh`, `scripts/test.sh --report`; `Aot_Publish_Extracts_A_Page` for `win-x64` and `linux-x64`: publishes the AOT consumer with IL2026 and IL3050 as errors and runs it |
+| `.github/workflows/_ci.yml` | called by `ci.yml` and `release.yml` | `test` on Ubuntu and Windows: `scripts/version.sh --check`, `scripts/build.sh`, `scripts/test.sh --report`; `docs` on Ubuntu: `scripts/docs-check.sh`; `Aot_Publish_Extracts_A_Page` for `win-x64` and `linux-x64`: publishes the AOT consumer with IL2026 and IL3050 as errors and runs it |
 | `.github/workflows/quality.yml` | pull requests touching `rust/`, and weekly | `core-untouched` (the core builds unchanged at its pinned commit), `mutants` (`cargo mutants`, in-diff on PRs), `bench` (`scripts/bench.sh`), `supply-chain` (`cargo deny check advisories licenses bans`) |
 | `.github/workflows/release.yml` | a `v*` tag, or `workflow_dispatch` as a rehearsal | `guard` (`scripts/version.sh --check --tag`), `_ci.yml`, `native` (all five RIDs), `package` (`scripts/release.sh`); on a tag only, the attestation and `github-release` |
 | `.github/workflows/publish.yml` | `workflow_dispatch` only, environment `nuget` | downloads a release's package, verifies its attestation and pushes it with `scripts/release.sh --push-only`; `dry_run` stops before the push |
@@ -96,33 +97,11 @@ without creating a release.
 
 ## Docs check
 
-A phase of [phase-plan.md](phase-plan.md) closes only when this exits 0. Run from the repo root; it prints one line
-per broken pointer or link. The first half checks every backticked path with `/` in `AGENTS.md`,
-`docs/architecture.md` and this page (and the `::Name` after it); the second half checks relative
-Markdown links in those pages and README.
-
-```bash
-{
-for f in AGENTS.md docs/architecture.md docs/development.md; do
-  [ -f "$f" ] && grep -oE '`[^` ]*/[^` ]*`' "$f" | tr -d '`'
-done | sort -u | while IFS= read -r t; do
-  case "$t" in
-    *'*'*|.work/*|.superpowers/*|artifacts/*|dotnet/benchmarks/corpus/*|dotnet/src/RustTrafilatura/runtimes/*) continue ;;
-  esac
-  p=${t%%::*}; n=${t#*::}
-  if [ ! -e "$p" ]; then echo "missing path: $t"
-  elif [ "$n" != "$t" ] && ! grep -qF -- "$n" "$p"; then echo "missing name: $t"
-  fi
-done
-for f in AGENTS.md README.md docs/architecture.md docs/development.md; do
-  [ -f "$f" ] || continue; d=$(dirname "$f")
-  grep -oE '\]\([^)]+\)' "$f" | sed -E 's/^\]\(//; s/\)$//; s/#.*//' | while IFS= read -r l; do
-    case "$l" in ''|*://*|mailto:*) continue ;; esac
-    [ -e "$d/$l" ] || echo "broken link in $f: $l"
-  done
-done
-} | { ! grep .; }
-```
+A phase of [phase-plan.md](phase-plan.md) closes only when `scripts/docs-check.sh` exits 0; `scripts/docs-check.ps1`
+runs the same check. It prints one line per broken pointer or link and exits 1 when there are any. The first half
+checks every backticked path with `/` in `AGENTS.md`, `docs/architecture.md` and this page (and the `::Name` after
+it); the second half checks relative Markdown links in those pages and README. CI runs the script on Ubuntu in the
+`docs` job of `.github/workflows/_ci.yml`, where a wrong-case path fails.
 
 Writing rules that keep it exact:
 
