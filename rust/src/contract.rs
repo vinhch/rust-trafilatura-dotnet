@@ -180,8 +180,7 @@ pub fn payload<'a>(header: &Header, bytes: &'a [u8]) -> Result<Payload<'a>, Requ
 pub fn error_kind(error: &ExtractError) -> (&'static str, Option<Value>) {
     match error {
         ExtractError::Rejected(rejection) => rejection_kind(*rejection),
-        // No wire kind for these yet.
-        ExtractError::Cancelled | ExtractError::DeadlineExceeded => ("Unknown", None),
+        // Cancelled and DeadlineExceeded have no wire kind yet.
         _ => ("Unknown", None),
     }
 }

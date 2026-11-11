@@ -131,6 +131,19 @@ fn payload_text_with_invalid_utf8_is_invalid_request() {
 }
 
 #[test]
+fn missing_metadata_reports_the_missing_fields() {
+    let header = br#"{"responseFields":["contentText"],"options":{"hasEssentialMetadata":true}}"#;
+    let (code, json) = extract(header, HTML.as_bytes());
+    assert_eq!(code, 1, "{json:?}");
+    let json = json.expect("code 1 writes an error envelope the caller owns");
+    assert_eq!(json["error"]["kind"], "MissingMetadata");
+    assert_eq!(
+        json["error"]["context"],
+        serde_json::json!({ "missing": ["date", "url"] })
+    );
+}
+
+#[test]
 fn rt_version_reports_abi_schema_crate_and_core() {
     let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let code = unsafe { rt_version(&mut out, &mut len, &mut cap) };
