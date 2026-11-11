@@ -20,8 +20,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 3 | 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | Not started | Full suites green; a cancel mid-extraction throws in under a quarter of the uncancelled run; a pre-cancelled token throws without a native call; a cancel between `rt_extract` returning and the registration dispose returns the normal result; the managed `SafeHandle` live count is zero after single and concurrent runs | 2 |
-| 4 | 4. Release: CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed; release notes list the date format, `HtmlDateMode.Default`, the `max_nodes` rejection, empty input as `MissingDocument`, `Metadata.Language` always empty until crate OI-4, an oversized payload as `InputTooLarge` (code 1) instead of `InvalidRequest` (code 2), `ExtractFromHtml` skipping the binary check, decompression and charset detection so a string starting with `%PDF-` extracts instead of failing, and extraction on a fixed 1 MiB worker thread on macOS (the caller's thread elsewhere); README states that extraction on a host other than `dotnet.exe` or an apphost needs a 1 MiB caller thread stack on Windows and Linux, and that IIS `w3wp.exe` hosting is unchecked; `cargo deny check` warns about three unused allowances in `rust/deny.toml` (lines 15, 17, 19), remove them | 2, 3 |
+| 4 | 4. Release: CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed; release notes list the date format, `HtmlDateMode.Default`, the `max_nodes` rejection, empty input as `MissingDocument`, `Metadata.Language` always empty until crate OI-4, an oversized payload as `InputTooLarge` (code 1) instead of `InvalidRequest` (code 2), `ExtractFromHtml` skipping the binary check, decompression and charset detection so a string starting with `%PDF-` extracts instead of failing, and extraction on a fixed 1 MiB worker thread on macOS (the caller's thread elsewhere); README states that extraction on a host other than `dotnet.exe` or an apphost needs a 1 MiB caller thread stack on Windows and Linux, and that IIS `w3wp.exe` hosting is unchecked; `cargo deny check` warns about three unused allowances in `rust/deny.toml` (lines 15, 17, 19), remove them | 2 |
 
 ### Shipped phases
 
@@ -29,6 +28,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 | --- | --- |
 | 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `3d8960b..e004856` and the phase-closing commit |
 | 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `b0eb0e4..c0b8b41` and the phase-closing commit |
+| 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | `5854c3d..7abf8fb` and the phase-closing commit |
 
 ## Open items register
 
@@ -46,11 +46,9 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-2 | Re-add a batch method as a managed wrapper over `ExtractFromBytes` if a consumer asks; no native batch (the crate's `extract_batch` spawns its own threads). | Phase 4 |
 | F-3 | `Metadata.Language` and `WrongLanguage`: reachable once the crate closes its OI-4 (language detection). | trafilatura-rust OI-4 |
 | F-4 | Comments HTML: the crate records it as its F-80. | trafilatura-rust F-80 |
-| F-5 | Run the docs check from `docs/development.md` in CI on Ubuntu, so a broken pointer fails the pull request instead of relying on the closing agent, and a wrong-case path fails as it would on Linux. | Phase 2 |
 | F-6 | README links into `docs/` are relative and break on the nuget.org package page; use absolute GitHub URLs for them. | Phase 4 |
 | F-7 | `DuplicateBody` is unreachable from `bare_extraction`: duplicate detection needs a `DedupCache` the binding does not pass. | A consumer asks for cross-call dedup |
-| F-8 | The macOS worker (`extraction_stack()`) and the macOS skip of `Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB` run on no CI host. Add a macOS job, or a test that runs the selected stack on every OS. | Phase 4 |
+| F-8 | The macOS worker selected by `extraction_stack()` runs on no CI host. Add a macOS job, or a test that runs the selected stack on every OS. | Phase 4 |
 | F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 4 |
-| F-10 | `contract.rs` imports `engine::Payload` and `engine` imports `contract`. Move `Payload` into a module both can import. | Phase 3 (edits `contract.rs`) |
 | F-11 | The macOS .NET 8 stack value (512 KiB) comes from the libpthread main branch, not a release build. Confirm it before the phase 4 README states it. | Phase 4 |
 | F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
