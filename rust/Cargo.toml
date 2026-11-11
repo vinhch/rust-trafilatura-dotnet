@@ -1,6 +1,6 @@
 [package]
 name = "rust-trafilatura-ffi"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.98.1"
 # This field states the license of this repository's own code, which is MIT. The bundled core crate is
