@@ -3,8 +3,8 @@
 //!
 //! Every test drives the exported functions the way the C# interop layer does and releases each
 //! returned buffer with `rt_free`, so the exports are `unsafe` and every call sits in an `unsafe`
-//! block. The one test that changes the process environment lives in `tests/caps.rs` instead: the
-//! caps are read once per process, so a second test in that binary would race them.
+//! block. The tests that change the process environment live in `tests/caps.rs` instead: the caps are
+//! read once per process, so they cannot share a binary with the tests that use the defaults.
 
 #[cfg(feature = "test-hooks")]
 use rust_trafilatura_ffi::rt_panic_for_test;
@@ -18,8 +18,7 @@ const DEFAULT_PAYLOAD_CAP: usize = 64 * 1024 * 1024;
 /// The default header cap in bytes.
 const DEFAULT_HEADER_CAP: usize = 1024 * 1024;
 
-/// The environment variables the caps are read from; a rejection names the variable it broke.
-const PAYLOAD_CAP_ENV: &str = "RUSTTRAFILATURA_MAX_PAYLOAD_BYTES";
+/// The environment variable the header cap is read from; a rejection names the variable it broke.
 const HEADER_CAP_ENV: &str = "RUSTTRAFILATURA_MAX_HEADER_BYTES";
 
 /// Enough article text for the core to keep the document instead of rejecting it as too short.
@@ -135,40 +134,58 @@ fn header_over_cap_is_rejected() {
 }
 
 #[test]
-fn payload_over_cap_is_rejected_before_parsing() {
-    // A truncated gzip stream is a payload the core rejects with its own error, code 1. Sending the
-    // same stream past the cap must give code 2 instead: only the wrapper returns 2, so a cap that
-    // ran after parsing would have returned the core's 1.
+fn payload_over_default_cap_is_input_too_large() {
+    // A truncated gzip stream is a payload the core rejects with its own error, which is not the cap's
+    // kind. Sending the same stream past the cap must give InputTooLarge instead: the cap runs before
+    // the core decodes anything, so the stream's own error cannot win.
     let truncated_gzip = [0x1f, 0x8b, 0x08, 0x00, 0x00];
     let (code, json) = call(TEXT_ONLY, &truncated_gzip);
     assert_eq!(code, 1, "the control payload must reach the core: {json:?}");
+    assert_ne!(
+        json.as_ref().expect("code 1 writes an envelope")["error"]["kind"],
+        "InputTooLarge",
+        "the control must fail on its own, not on the cap: {json:?}"
+    );
 
     let mut over = vec![0u8; DEFAULT_PAYLOAD_CAP + 1];
     over[..truncated_gzip.len()].copy_from_slice(&truncated_gzip);
     let (code, json) = call(TEXT_ONLY, &over);
-    assert_eq!(code, 2, "a payload over the cap must be rejected");
-    let reason = rejection_reason(&json.expect("code 2 writes an InvalidRequest envelope"));
-    assert!(reason.contains(PAYLOAD_CAP_ENV), "{reason}");
-    assert!(
-        reason.contains(&DEFAULT_PAYLOAD_CAP.to_string()),
-        "the reason must name the cap it enforced, not only the variable: {reason}"
+    assert_eq!(
+        code, 1,
+        "a payload over the cap is a core rejection: {json:?}"
     );
-    assert!(
-        reason.contains(&(DEFAULT_PAYLOAD_CAP + 1).to_string()),
-        "{reason}"
-    );
+    let json = json.expect("code 1 writes an extraction envelope");
+    assert_eq!(json["schemaVersion"], 2);
+    assert_eq!(json["error"]["kind"], "InputTooLarge", "{json}");
+    assert_eq!(json["error"]["context"]["limit"], "maxInputBytes", "{json}");
 }
 
 #[test]
-fn thousand_level_nesting_returns_on_default_stack() {
-    let html = format!("{}text{}", "<div>".repeat(1000), "</div>".repeat(1000));
-    let (code, json) = call(TEXT_ONLY, html.as_bytes());
-    assert!(
-        matches!(code, 0 | 1),
-        "1000 levels must return a result, not a fallback: code {code}"
+fn extraction_fits_a_768_kib_stack() {
+    // The paragraph comes before the nesting: parsing stops at depth 256, so a page that nested first
+    // would leave no text to extract. The worker thread is the caller's own on Linux and Windows, so
+    // this is the stack a .NET thread gives the extraction there.
+    let page = format!(
+        "<html><body><article><p>{}</p></article>{}text{}</body></html>",
+        "word ".repeat(60),
+        "<div>".repeat(1000),
+        "</div>".repeat(1000)
     );
-    let json = json.expect("code 0 or 1 writes the response");
+    let worker = std::thread::Builder::new()
+        .stack_size(768 * 1024)
+        .spawn(move || call(TEXT_ONLY, page.as_bytes()))
+        .expect("a 768 KiB test thread must start");
+    let (code, json) = worker.join().expect("the extraction must not panic");
+    assert_eq!(
+        code, 0,
+        "the page must extract on a 768 KiB stack: {json:?}"
+    );
+    let json = json.expect("code 0 writes the response");
     assert_eq!(json["schemaVersion"], 2);
+    let text = json["contentText"]
+        .as_str()
+        .expect("contentText is the requested field");
+    assert!(!text.is_empty(), "{json}");
 }
 
 #[test]

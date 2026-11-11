@@ -1,17 +1,17 @@
 //! The payload cap's boundary, in a file of its own.
 //!
-//! This is deliberately the only test in this binary. It sets the process environment before the
-//! first call, and each cap is read once into a `OnceLock`, so a second test here would race it and
-//! could hand code 2 to an unrelated assertion. `tests/abi_hardening.rs` covers the default caps,
-//! which need no environment change.
+//! Each test sets its own process environment before the first call, and each cap is read once into
+//! a `OnceLock`. nextest runs every test in its own process, so the tests here cannot race each other;
+//! plain `cargo test` would share one process and must not be used for this file.
+//! `tests/abi_hardening.rs` covers the default caps, which need no environment change.
 
 use rust_trafilatura_ffi::{rt_extract, rt_free};
 use serde_json::Value;
 
-/// The cap this test pins the boundary against: small enough to build both sides of it.
+/// The cap these tests pin the boundary against: small enough to build both sides of it.
 const CAP: usize = 1024;
 
-/// The environment variable the payload cap is read from; the rejection names it.
+/// The environment variable the payload cap is read from.
 const PAYLOAD_CAP_ENV: &str = "RUSTTRAFILATURA_MAX_PAYLOAD_BYTES";
 
 /// Enough article text for the core to keep the document instead of rejecting it as too short.
@@ -57,7 +57,23 @@ fn call(payload: &[u8]) -> (i32, Option<Value>) {
 }
 
 #[test]
-fn payload_at_cap_is_accepted_and_one_byte_over_is_rejected() {
+fn payload_over_cap_is_input_too_large() {
+    std::env::set_var(PAYLOAD_CAP_ENV, CAP.to_string());
+
+    let one_over = article_of_len(CAP + 1);
+    let (code, json) = call(&one_over);
+    assert_eq!(
+        code, 1,
+        "one byte over the cap is a core rejection: {json:?}"
+    );
+    let json = json.expect("code 1 writes an extraction envelope");
+    assert_eq!(json["schemaVersion"], 2);
+    assert_eq!(json["error"]["kind"], "InputTooLarge");
+    assert_eq!(json["error"]["context"]["limit"], "maxInputBytes");
+}
+
+#[test]
+fn payload_at_cap_is_accepted() {
     std::env::set_var(PAYLOAD_CAP_ENV, CAP.to_string());
 
     let at_cap = article_of_len(CAP);
@@ -67,16 +83,13 @@ fn payload_at_cap_is_accepted_and_one_byte_over_is_rejected() {
         code, 0,
         "a payload exactly at the cap must be accepted: {json:?}"
     );
+}
 
-    let one_over = article_of_len(CAP + 1);
-    let (code, json) = call(&one_over);
-    assert_eq!(code, 2, "one byte over the cap must be rejected: {json:?}");
-    let json = json.expect("code 2 writes an InvalidRequest envelope");
-    assert_eq!(json["schemaVersion"], 2);
-    assert_eq!(json["error"]["kind"], "InvalidRequest");
-    let reason = json["error"]["context"]["reason"]
-        .as_str()
-        .expect("an InvalidRequest carries its reason");
-    assert!(reason.contains(PAYLOAD_CAP_ENV), "{reason}");
-    assert!(reason.contains(&(CAP + 1).to_string()), "{reason}");
+#[test]
+fn zero_cap_lifts_the_limit() {
+    std::env::set_var(PAYLOAD_CAP_ENV, "0");
+
+    let over_the_cap = article_of_len(CAP + 1);
+    let (code, json) = call(&over_the_cap);
+    assert_eq!(code, 0, "a cap of 0 disables the payload cap: {json:?}");
 }

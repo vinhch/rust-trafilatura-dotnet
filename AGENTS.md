@@ -32,7 +32,7 @@ says what ships next.
 | Path | Holds |
 | --- | --- |
 | `rust/src/` | the native library: `rust/src/lib.rs` (exports, panic boundary, caps, all `unsafe`), `rust/src/contract.rs` (header types and validation, error kinds), `rust/src/engine.rs` (core call, response assembly) |
-| `rust/tests/`, `rust/benches/`, `rust/examples/` | ABI integration tests, the round-trip bench, the stack-depth probe |
+| `rust/tests/`, `rust/benches/` | ABI integration tests, the round-trip bench |
 | `dotnet/src/RustTrafilatura/` | the package: the public types below, plus internal interop, contract check, header serialization and response and failure readers ([docs/architecture.md](docs/architecture.md) names each) |
 | `dotnet/tests/RustTrafilatura.Tests/` | the .NET test suite |
 | `dotnet/tests/RustTrafilatura.CompileFixture/` | compile-only: which call sites the public byte overloads accept |
@@ -57,7 +57,7 @@ the table names another:
 - The ABI and schema versions bump together with their checks (row "ABI or schema bump" below).
 - Unknown header keys are rejected at every level (`deny_unknown_fields` in `rust/src/contract.rs`);
   never loosen that.
-- Every export checks its out-parameters and input sizes before reading or writing anything, and
+- Every export checks its out-parameters before reading or writing anything. `rt_extract` checks the header size before it parses the header, and the core checks the payload size before it reads the payload. Every export
   runs its body behind the panic boundary. A deliberate panic inside it is fine (the worker-thread
   `expect` in `rust/src/lib.rs::on_worker_thread`).
 - The library does no I/O, writes nothing to stderr and never echoes the input HTML in an error.
@@ -84,7 +84,7 @@ from the repo root, replace `<old>` with the current value); the test fails when
 | Error kind | `rust/src/contract.rs::error_kind` (core errors), `rust/src/lib.rs::request_error` and `rust/src/lib.rs::error_response` (invalid request, panic) | `git grep -n -e MissingMetadata`: `dotnet/src/RustTrafilatura/TrafilaturaException.cs::TrafilaturaErrorKind`, `dotnet/src/RustTrafilatura/Failures.cs::ReadKind`, the README error table | `dotnet/tests/RustTrafilatura.Tests/ErrorTests.cs::Error_Kind_Enum_Matches_The_Contract`, `rust/src/contract.rs::error_kind_covers_every_core_variant` |
 | New or changed export | the export in `rust/src/lib.rs` and the export list in its module doc | `git grep -n -e rt_version` (an existing export): the `LibraryImport` in `dotnet/src/RustTrafilatura/Interop.cs`, `docs/architecture.md`; a new test hook also goes on the forbidden lists in `scripts/release.sh` and `scripts/release.ps1`; a public signature change: see "Tests" below | `rust/tests/abi.rs::null_out_params_are_rejected_without_writing` (null out-parameters per export), `rust/tests/abi_hardening.rs` (null buffers, `rt_free`, the panic hook) |
 | ABI or schema bump | `rust/src/lib.rs::ABI_VERSION`, `rust/src/contract.rs::SCHEMA_VERSION` | `git grep -n -i -E -e 'abi.{0,10}\b<old>\b' -e 'schema.?version.{0,20}\b<old>\b' -e 'Equal\(<old>, .*abi' -e 'Equal\(<old>, .*schema'`: `dotnet/src/RustTrafilatura/LibraryContract.cs`, `dotnet/src/RustTrafilatura/HeaderContext.cs`, doc comments and test literals; plus the README "Compatibility and Limitations" sentence | `dotnet/tests/RustTrafilatura.Tests/AbiContractTests.cs::RealLibrary_Passes_The_Contract_Check` |
-| Input cap or env var | the cap constants and env names in `rust/src/lib.rs`, and the `rust/src/lib.rs::rt_extract` doc | `git grep -n -e RUSTTRAFILATURA_ -e MiB -e '1024 \* 1024'`: `rust/tests/abi_hardening.rs`, `rust/tests/caps.rs`, `rust/examples/depth_probe.rs`, the README | `rust/tests/caps.rs` |
+| Input cap or env var | the cap constants and env names in `rust/src/lib.rs`, and the `rust/src/lib.rs::rt_extract` doc; the payload cap reaches the core in `rust/src/engine.rs::options_from` | `git grep -n -e RUSTTRAFILATURA_ -e MiB -e '1024 \* 1024'`: `rust/tests/abi_hardening.rs`, `rust/tests/caps.rs`, the README | `rust/tests/caps.rs` |
 | Package version | `rust/Cargo.toml`, `dotnet/src/RustTrafilatura/RustTrafilatura.csproj`, `rust/Cargo.lock` | change only through `scripts/version.sh --set`, which writes all three | `scripts/version.sh --check` (CI and the release guard) |
 | Core dependency bump | the exact pin in `rust/Cargo.toml` | `git grep -n -E -e 'trafilatura[-_]rust'`: the lockfile readers `rust/build.rs` and `dotnet/tests/RustTrafilatura.Tests/Repository.cs::CoreVersion`, `use` paths, docs; the pinned core commit in `.github/workflows/quality.yml`; licenses in `rust/deny.toml` and `THIRD-PARTY-NOTICES.md` (run `cargo deny check advisories licenses bans` in `rust/`); a new package version; re-check the option and error kind rows | `dotnet/tests/RustTrafilatura.Tests/ExtractionTests.cs::LibraryVersion_Matches_TheCrateAndCoreItWasBuiltFrom`, `rust/src/contract.rs::error_kind_covers_every_core_variant` |
 | Toolchain or SDK bump | Rust: `rust-version` in `rust/Cargo.toml` and the commit SHA every Rust toolchain action step pins (the version comment follows the SHA; Dependabot cannot move it); nextest: the `cargo-nextest@` pin in `.github/workflows/_ci.yml` and `.github/workflows/quality.yml`; .NET: `global.json` | `git grep -n -e '<old version>' -e '<old SHA>'`: `.github/workflows/`, `docs/development.md` prerequisites | CI; the rustc version also feeds the build stamp |
@@ -108,7 +108,7 @@ from the repo root, replace `<old>` with the current value); the test fails when
 - `.sh` and `.ps1` twins take the same arguments and change together; the build-stamp logic in
   `scripts/build.sh` and `scripts/build.ps1` stays byte-identical.
 - Any change to the stamp inputs (`source_paths` in `scripts/build.sh`: Rust sources outside
-  `rust/tests/`, `rust/benches/` and `rust/examples/`, `rust/Cargo.toml`, `rust/Cargo.lock`, the
+  `rust/tests/`, `rust/benches/` and the examples directory, `rust/Cargo.toml`, `rust/Cargo.lock`, the
   toolchain), `scripts/version.sh --set` included, makes
   `scripts/test.sh` fail until `scripts/build.sh` runs again.
 - The staged-library item in `dotnet/Directory.Build.props` must not use the item type

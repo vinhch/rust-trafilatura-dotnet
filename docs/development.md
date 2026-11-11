@@ -85,7 +85,7 @@ without creating a release.
 - `scripts/build.sh` copies the library into `dotnet/src/RustTrafilatura/runtimes/` under the RID
   and writes a build stamp beside it. The stamp digests the toolchain version and every file
   `source_paths` in `scripts/build.sh` lists: the `.rs` files under `rust/` outside `rust/tests/`,
-  `rust/benches/` and `rust/examples/`, plus
+  `rust/benches/` and the examples directory, plus
   `rust/Cargo.toml` and `rust/Cargo.lock`. Any change there, `scripts/version.sh --set` included,
   makes the stamp stale, and `scripts/test.sh` fails until `scripts/build.sh` runs again.
 - The stamp logic in `scripts/build.sh` and `scripts/build.ps1` has to stay byte-identical.

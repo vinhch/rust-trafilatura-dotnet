@@ -16,9 +16,10 @@ the "Change together" table in [AGENTS.md](../AGENTS.md).
 3. `dotnet/src/RustTrafilatura/Request.cs::Header` serializes the options into the request header.
 4. `dotnet/src/RustTrafilatura/Interop.cs::Extract` calls `rust/src/lib.rs::rt_extract` with the
    header and the page as raw buffers; the page is never base64-encoded or copied into a string.
-5. `rust/src/lib.rs::rt_extract` checks both buffers against the input caps, parses the header
-   (`rust/src/contract.rs::parse_request`) and runs the extraction on a scoped worker thread
-   (`rust/src/lib.rs::on_worker_thread`) behind a panic boundary.
+5. `rust/src/lib.rs::rt_extract` checks the null pointers and the header size, parses the header
+   (`rust/src/contract.rs::parse_request`) and runs the extraction through
+   `rust/src/lib.rs::on_worker_thread`, on the caller's thread or on a worker on macOS, behind a panic
+   boundary. The core checks the payload size before it reads the payload.
 6. `rust/src/engine.rs::build` calls the core and assembles the response JSON.
 7. The managed side reads the response straight from the native buffer
    (`dotnet/src/RustTrafilatura/Response.cs::Read`, or `dotnet/src/RustTrafilatura/Failures.cs::Read`
@@ -75,6 +76,30 @@ to the native buffer past the read.
 
 ## Input caps
 
-`rust/src/lib.rs` holds the header and payload caps, the worker stack size and the environment
-variables that override them, each read once per process. Both buffers are checked before either is
-read, so an oversized input is rejected before anything is allocated in proportion to it.
+`rust/src/lib.rs` holds the header and payload caps and the environment variables that override them,
+each read once per process. The header is checked against its cap before it is parsed, so an
+oversized header is rejected before anything is parsed. The payload cap reaches the core as its input
+cap (`rust/src/engine.rs::options_from`), so an oversized payload is rejected before the core reads it,
+as an `InputTooLarge` error. Both caps are compared with `>`, and `0` disables the cap it names.
+
+## Stack
+
+The extraction needs 1 MiB of stack (`rust/src/lib.rs::WORKER_STACK_BYTES`). On macOS it runs on a
+worker thread with that stack (`rust/src/lib.rs::extraction_stack`); elsewhere it runs on the caller's
+thread, so the host's threads have to provide it. Rust's own test runs the extraction on 768 KiB
+(`rust/tests/abi_hardening.rs::extraction_fits_a_768_kib_stack`). The sentence that enforces the bound
+on the host is `dotnet/tests/RustTrafilatura.Tests/StackTests.cs::Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB`,
+which runs on every host CI runs (Linux, Windows) and reads the stack with
+`dotnet/tests/RustTrafilatura.Tests/ThreadStack.cs::CurrentSizeBytes`. The table records no CI number.
+
+| Host | .NET | Default stack of a new or thread-pool thread | Source |
+| --- | --- | --- | --- |
+| Windows x64 | 8, 10 | 1572864 (1.5 MiB) | OS-inherited: the `dotnet.exe` PE stack reserve; the runtime passes 0 to `CreateThread` (vm/threads.cpp in dotnet/runtime) |
+| Linux glibc x64, arm64 | 8, 10 | 8388608 (8 MiB) at `ulimit -s 8192` | glibc follows `RLIMIT_STACK`, and the runtime sets nothing. The bound holds while the soft limit is at least 1 MiB |
+| macOS x64, arm64 | 8 | 524288 (512 KiB) | OS-inherited: the libpthread default. Below 1 MiB, so the macOS worker covers it |
+| macOS x64, arm64 | 10 | 1572864 (1.5 MiB) | set by the runtime (`pal.cpp`, `HOST_APPLE`) |
+
+Sources are the dotnet/runtime release tags v8.0.33 and v10.0.14. Overrides: `DOTNET_DefaultStackSize`
+(.NET 8); `DOTNET_Thread_DefaultStackSize` and the runtimeconfig `System.Threading.DefaultStackSize`
+(.NET 10). Gaps: the glibc arm64 2 MiB fallback is the man7 wording, not checked in glibc source; the
+macOS value comes from the libpthread main branch, not a release build.

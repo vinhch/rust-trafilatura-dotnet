@@ -9,9 +9,10 @@
 //! `test-hooks`-gated test hooks) and the library's `unsafe` code belong in this file: pointer dereference, the `Vec`
 //! reconstruction in `rt_free` and the `catch_unwind` boundary. A caller opens an `unsafe` block at
 //! the call site, because an `unsafe extern "C"` function cannot be called from safe code. Each
-//! export validates its out-parameters and the size of its inputs before reading or writing
-//! anything, and runs its body behind a panic boundary, so a panic becomes return code 3 with a
-//! `Panic` envelope instead of unwinding into the host process.
+//! export validates its out-parameters, and `rt_extract` validates its header size, before reading or
+//! writing anything; the core checks the payload size before it reads the payload. Each export runs
+//! its body behind a panic boundary, so a panic becomes return code 3 with a `Panic` envelope instead
+//! of unwinding into the host process.
 //!
 //! A panic hook installed on the first export call keeps the default hook's stderr output out of
 //! the host process, because a library inside a .NET host must not write there.
@@ -19,8 +20,8 @@
 pub mod contract;
 pub mod engine;
 
-use crate::contract::{Request, RequestError, SCHEMA_VERSION};
-use crate::engine::{ErrorEnvelope, Payload, Response};
+use crate::contract::{RequestError, SCHEMA_VERSION};
+use crate::engine::{ErrorEnvelope, Response};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
@@ -36,15 +37,6 @@ const CODE_OK: i32 = 0;
 const CODE_EXTRACTION_ERROR: i32 = 1;
 const CODE_INVALID_REQUEST: i32 = 2;
 const CODE_PANIC_CAUGHT: i32 = 3;
-
-/// Environment variable holding the extraction stack size in bytes.
-const STACK_BYTES_ENV: &str = "RUSTTRAFILATURA_STACK_BYTES";
-
-/// Stack size used when the environment variable is absent or unusable.
-const DEFAULT_STACK_BYTES: usize = 16 * 1024 * 1024;
-
-/// The extraction stack size, read once so it cannot change between calls.
-static STACK_BYTES: OnceLock<usize> = OnceLock::new();
 
 /// Environment variable holding the payload cap in bytes; `0` disables the cap.
 const PAYLOAD_CAP_ENV: &str = "RUSTTRAFILATURA_MAX_PAYLOAD_BYTES";
@@ -92,15 +84,17 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 /// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `options`,
 /// `responseFields`, `payloadText`) and `payload` is raw HTML or gzip bytes, or UTF-8 text when
 /// `payloadText` is `true`, never base64. A null `payload` with `payload_len == 0` is empty input
-/// and reaches the core. The call runs the extraction to completion on a scoped thread.
+/// and reaches the core. The extraction runs on the caller's thread, or on a 1 MiB worker on macOS,
+/// so it needs 1 MiB of stack.
 ///
-/// Both buffers are checked before either is read, and each check can reject the request on its
-/// own: a null pointer beside a non-zero length, a header above 1 MiB, a payload above 64 MiB, or
-/// a header the contract rejects. A buffer exactly at its cap is accepted, and the caps are
-/// therefore enforced before the header is parsed and before anything is allocated in proportion
-/// to the input. `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES`
-/// override the caps; each is read once, so a value set after the first call has no effect, and
-/// `0` disables the cap it names.
+/// The null-pointer checks come first: a null pointer beside a non-zero length is an
+/// `InvalidRequest`. The header is then checked against its cap before it is parsed, so a header
+/// above 1 MiB is an `InvalidRequest` too, and so is a header the contract rejects. The core checks
+/// the payload against its own cap before it reads the payload: a payload above 64 MiB is an
+/// `InputTooLarge` extraction error (code `1`). A buffer exactly at its cap is accepted.
+/// `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES` override the caps; each
+/// is read once, so a value set after the first call has no effect, and `0` disables the cap it
+/// names.
 ///
 /// # Safety
 ///
@@ -241,14 +235,7 @@ fn run_extract(
     payload: *const u8,
     payload_len: usize,
 ) -> (i32, Vec<u8>) {
-    if let Err(error) = check_input(
-        header,
-        header_len,
-        payload,
-        payload_len,
-        header_cap(),
-        payload_cap(),
-    ) {
+    if let Err(error) = check_input(header, header_len, payload, payload_len, header_cap()) {
         return request_error(error);
     }
     // SAFETY: the buffer pointers and lengths are the caller's contract, stated in the exports'
@@ -263,7 +250,9 @@ fn run_extract(
         Ok(payload) => payload,
         Err(error) => return request_error(error),
     };
-    let response = on_worker_thread(&request, payload);
+    let response = on_worker_thread(extraction_stack(), || {
+        engine::build(&request, payload, max_input_bytes())
+    });
     let code = if response.error.is_some() {
         CODE_EXTRACTION_ERROR
     } else {
@@ -275,15 +264,15 @@ fn run_extract(
 /// Rejects the inputs the ABI refuses, before either buffer is read.
 ///
 /// Neither pointer is dereferenced here, and each problem is reported in the order it is found: a
-/// null pointer beside a non-zero length, the header cap, then the payload cap. Both caps are
-/// compared with `>`, so a buffer exactly at its cap is accepted, and a cap of `0` is disabled.
+/// null pointer beside a non-zero length, then the header cap. The cap is compared with `>`, so a
+/// header exactly at its cap is accepted, and a cap of `0` is disabled. The payload has no check
+/// here: the core applies the payload cap, from [`max_input_bytes`], once the header is parsed.
 fn check_input(
     header: *const u8,
     header_len: usize,
     payload: *const u8,
     payload_len: usize,
     header_cap: usize,
-    payload_cap: usize,
 ) -> Result<(), RequestError> {
     if header.is_null() && header_len > 0 {
         return Err(RequestError::InvalidRequest(format!(
@@ -300,11 +289,6 @@ fn check_input(
             "header is {header_len} bytes, above the {header_cap}-byte cap in {HEADER_CAP_ENV}"
         )));
     }
-    if payload_cap > 0 && payload_len > payload_cap {
-        return Err(RequestError::InvalidRequest(format!(
-            "payload is {payload_len} bytes, above the {payload_cap}-byte cap in {PAYLOAD_CAP_ENV}"
-        )));
-    }
     Ok(())
 }
 
@@ -319,35 +303,43 @@ fn request_error(error: RequestError) -> (i32, Vec<u8>) {
     )
 }
 
-/// Runs the extraction on a thread with the configured stack size.
+/// Runs the extraction on the caller's thread, or on a scoped thread with `stack_bytes` of stack.
 ///
-/// The thread borrows the request and the payload, so the HTML is never copied to satisfy a
-/// `'static` bound. A panic in the worker is resumed here so its message survives to the panic
-/// boundary, and a thread that cannot start is a panic too: running the extraction on the host's
-/// stack is the outcome this design exists to avoid.
-fn on_worker_thread(request: &Request, payload: Payload<'_>) -> Response {
+/// `None` runs `work` where it is. `Some` borrows what `work` captures on a scoped thread, so the
+/// HTML is never copied to satisfy a `'static` bound. A panic in the worker is resumed here so its
+/// message survives to the panic boundary, and a thread that cannot start is a panic too: running
+/// the extraction on the host's stack is the outcome this design exists to avoid.
+fn on_worker_thread<T: Send>(stack_bytes: Option<usize>, work: impl FnOnce() -> T + Send) -> T {
+    let Some(stack_bytes) = stack_bytes else {
+        return work();
+    };
     std::thread::scope(|scope| {
         let handle = std::thread::Builder::new()
-            .stack_size(stack_bytes())
-            .spawn_scoped(scope, || engine::build(request, payload))
+            .stack_size(stack_bytes)
+            .spawn_scoped(scope, work)
             .expect("the extraction thread must start");
         match handle.join() {
-            Ok(response) => response,
+            Ok(value) => value,
             Err(cause) => resume_unwind(cause),
         }
     })
 }
 
-/// The extraction stack size: `RUSTTRAFILATURA_STACK_BYTES` when it parses to a positive number,
-/// otherwise [`DEFAULT_STACK_BYTES`].
-fn stack_bytes() -> usize {
-    *STACK_BYTES.get_or_init(|| {
-        std::env::var(STACK_BYTES_ENV)
-            .ok()
-            .and_then(|value| value.trim().parse::<usize>().ok())
-            .filter(|bytes| *bytes > 0)
-            .unwrap_or(DEFAULT_STACK_BYTES)
-    })
+/// The stack the extraction needs. On macOS the extraction runs on a worker with this much stack,
+/// because the host's own threads default to less there on .NET 8.
+#[cfg(any(target_os = "macos", test))]
+const WORKER_STACK_BYTES: usize = 1024 * 1024;
+
+/// The extraction stack on macOS: a worker thread with [`WORKER_STACK_BYTES`].
+#[cfg(target_os = "macos")]
+fn extraction_stack() -> Option<usize> {
+    Some(WORKER_STACK_BYTES)
+}
+
+/// The extraction stack everywhere else: the caller's thread, which the host sizes at 1 MiB or more.
+#[cfg(not(target_os = "macos"))]
+fn extraction_stack() -> Option<usize> {
+    None
 }
 
 /// The header cap: `RUSTTRAFILATURA_MAX_HEADER_BYTES` when it parses to a number, otherwise
@@ -362,6 +354,11 @@ fn payload_cap() -> usize {
     *MAX_PAYLOAD_BYTES.get_or_init(|| cap_from_env(PAYLOAD_CAP_ENV, DEFAULT_MAX_PAYLOAD_BYTES))
 }
 
+/// The payload cap as the core takes it: `None` when the cap is `0`, which disables it.
+fn max_input_bytes() -> Option<usize> {
+    Some(payload_cap()).filter(|cap| *cap > 0)
+}
+
 /// Reads a cap from the environment.
 fn cap_from_env(name: &str, default: usize) -> usize {
     cap_from_value(std::env::var(name).ok(), default)
@@ -369,8 +366,8 @@ fn cap_from_env(name: &str, default: usize) -> usize {
 
 /// Turns an environment value into a cap.
 ///
-/// Unlike the stack size, `0` is a value with a meaning here, so it is kept; a value that is
-/// absent, blank or not a `usize` keeps the default instead.
+/// `0` is a value with a meaning here, so it is kept; a value that is absent, blank or not a
+/// `usize` keeps the default instead.
 fn cap_from_value(value: Option<String>, default: usize) -> usize {
     value
         .and_then(|value| value.trim().parse::<usize>().ok())
@@ -508,41 +505,53 @@ mod tests {
 
     #[test]
     fn check_input_rejects_a_null_buffer_with_a_length() {
-        assert!(check_input(std::ptr::null(), 8, unread_buffer(), 0, 1024, 1024).is_err());
-        assert!(check_input(unread_buffer(), 0, std::ptr::null(), 8, 1024, 1024).is_err());
+        assert!(check_input(std::ptr::null(), 8, unread_buffer(), 0, 1024).is_err());
+        assert!(check_input(unread_buffer(), 0, std::ptr::null(), 8, 1024).is_err());
         // A null pointer with a zero length is the empty input, which reaches the core.
-        assert!(check_input(std::ptr::null(), 0, std::ptr::null(), 0, 1024, 1024).is_ok());
+        assert!(check_input(std::ptr::null(), 0, std::ptr::null(), 0, 1024).is_ok());
     }
 
     #[test]
-    fn check_input_accepts_a_buffer_exactly_at_its_cap() {
-        assert!(check_input(unread_buffer(), 1024, unread_buffer(), 2048, 1024, 2048).is_ok());
+    fn check_input_accepts_a_header_exactly_at_its_cap() {
+        assert!(check_input(unread_buffer(), 1024, unread_buffer(), 2048, 1024).is_ok());
     }
 
     #[test]
-    fn check_input_rejects_a_buffer_above_its_cap() {
-        let error = check_input(unread_buffer(), 1025, unread_buffer(), 1, 1024, 2048)
+    fn check_input_rejects_a_header_above_its_cap() {
+        let error = check_input(unread_buffer(), 1025, unread_buffer(), 1, 1024)
             .expect_err("1025 bytes is above a 1024-byte header cap");
         assert!(
             matches!(error, RequestError::InvalidRequest(reason) if reason.contains(HEADER_CAP_ENV))
         );
-        let error = check_input(unread_buffer(), 1, unread_buffer(), 2049, 1024, 2048)
-            .expect_err("2049 bytes is above a 2048-byte payload cap");
-        assert!(
-            matches!(error, RequestError::InvalidRequest(reason) if reason.contains(PAYLOAD_CAP_ENV))
+    }
+
+    #[test]
+    fn check_input_with_a_zero_header_cap_accepts_any_header_length() {
+        assert!(check_input(unread_buffer(), usize::MAX, unread_buffer(), 0, 0).is_ok());
+    }
+
+    #[test]
+    fn on_worker_thread_without_a_stack_runs_on_the_caller_thread() {
+        let caller = std::thread::current().id();
+        assert_eq!(
+            on_worker_thread(None, || std::thread::current().id()),
+            caller
         );
     }
 
     #[test]
-    fn check_input_with_a_zero_cap_accepts_any_length() {
-        assert!(check_input(
-            unread_buffer(),
-            usize::MAX,
-            unread_buffer(),
-            usize::MAX,
-            0,
-            0
-        )
-        .is_ok());
+    fn on_worker_thread_with_a_stack_runs_on_another_thread() {
+        let caller = std::thread::current().id();
+        let worker = on_worker_thread(Some(WORKER_STACK_BYTES), || std::thread::current().id());
+        assert_ne!(worker, caller);
+    }
+
+    #[test]
+    fn on_worker_thread_resumes_a_panic_on_either_path() {
+        for stack in [None, Some(WORKER_STACK_BYTES)] {
+            let caught = catch_unwind(|| on_worker_thread::<()>(stack, || panic!("worker panic")));
+            let message = panic_message(&*caught.expect_err("the panic must reach the caller"));
+            assert_eq!(message, "worker panic", "stack {stack:?}");
+        }
     }
 }

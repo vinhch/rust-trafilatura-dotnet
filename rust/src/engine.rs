@@ -66,9 +66,9 @@ pub enum Payload<'a> {
 }
 
 /// Extracts from a payload and assembles the response. Infallible: core errors are mapped onto
-/// [`Response::error`].
-pub fn build(request: &Request, payload: Payload<'_>) -> Response {
-    let extractor = options_from(request).build();
+/// [`Response::error`]. `max_input_bytes` is the core's input cap, and `None` lifts it.
+pub fn build(request: &Request, payload: Payload<'_>, max_input_bytes: Option<usize>) -> Response {
+    let extractor = options_from(request, max_input_bytes).build();
     let mut input = match payload {
         Payload::Bytes(bytes) => Input::bytes(bytes),
         Payload::Text(text) => Input::text(text),
@@ -123,10 +123,12 @@ fn assemble(request: &Request, extracted: Result<Document, ExtractError>) -> Res
 /// Maps the request onto the core options. An absent key keeps the core's own default, so an empty
 /// `options` object gives the same options as no `options` key. `with_metadata` follows the
 /// requested `metadata` field, not the options: a blacklist or an essential-metadata check still
-/// extracts metadata, and the response then leaves it out.
-fn options_from(request: &Request) -> Options {
-    let mut options =
-        Options::new().with_metadata(request.fields.contains(&ResponseField::Metadata));
+/// extracts metadata, and the response then leaves it out. `max_input_bytes` is the input cap the
+/// core applies, and `None` lifts it.
+fn options_from(request: &Request, max_input_bytes: Option<usize>) -> Options {
+    let mut options = Options::new()
+        .with_metadata(request.fields.contains(&ResponseField::Metadata))
+        .max_input_bytes(max_input_bytes);
     let Some(json) = &request.header.options else {
         return options;
     };
@@ -289,6 +291,8 @@ mod tests {
     const EVERYTHING: &[u8] = br#"{"responseFields":["contentText","commentsText","metadata"]}"#;
     /// Index into [`FIXTURES`] of the document that carries a comments container.
     const WITH_COMMENTS: usize = 3;
+    /// The input cap the wrapper passes at its default, 64 MiB.
+    const DEFAULT_INPUT_CAP: Option<usize> = Some(64 * 1024 * 1024);
 
     /// The debug form of the core options, which is how the option mapping is compared: the crate
     /// keeps its fields private.
@@ -298,7 +302,7 @@ mod tests {
 
     /// [`build`] on raw bytes, the path most tests here cover.
     fn build_bytes(request: &Request, payload: &[u8]) -> Response {
-        build(request, Payload::Bytes(payload))
+        build(request, Payload::Bytes(payload), DEFAULT_INPUT_CAP)
     }
 
     #[test]
@@ -330,7 +334,7 @@ mod tests {
             .error
             .expect("the byte path must reject a binary magic");
         assert_eq!(error.kind, "MissingDocument");
-        let from_text = build(&request, Payload::Text(&html));
+        let from_text = build(&request, Payload::Text(&html), DEFAULT_INPUT_CAP);
         assert!(from_text.error.is_none(), "{:?}", from_text.error);
         let text = from_text.content_text.expect("contentText was requested");
         assert!(text.contains("The council approved the measure"), "{text}");
@@ -338,7 +342,11 @@ mod tests {
 
     #[test]
     fn empty_text_payload_is_missing_document() {
-        let response = build(&parse_request(br#"{}"#).unwrap(), Payload::Text(""));
+        let response = build(
+            &parse_request(br#"{}"#).unwrap(),
+            Payload::Text(""),
+            DEFAULT_INPUT_CAP,
+        );
         let error = response
             .error
             .expect("an empty text payload has no document");
@@ -734,12 +742,21 @@ mod tests {
         for (header, expected) in cases {
             let request = parse_request(header).unwrap();
             assert_eq!(
-                debug_of(options_from(&request)),
+                debug_of(options_from(&request, DEFAULT_INPUT_CAP)),
                 debug_of(expected),
                 "{}",
                 String::from_utf8_lossy(header)
             );
         }
+    }
+
+    #[test]
+    fn absent_input_cap_maps_to_no_limit() {
+        let request = parse_request(br#"{}"#).unwrap();
+        assert_eq!(
+            debug_of(options_from(&request, None)),
+            debug_of(Options::new().with_metadata(true).max_input_bytes(None))
+        );
     }
 
     #[test]
@@ -754,7 +771,7 @@ mod tests {
         ] {
             let request = parse_request(header).unwrap();
             assert_eq!(
-                debug_of(options_from(&request)),
+                debug_of(options_from(&request, DEFAULT_INPUT_CAP)),
                 debug_of(with_metadata_only(no_limit.clone())),
                 "{}",
                 String::from_utf8_lossy(header)
@@ -771,7 +788,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            debug_of(options_from(&request)),
+            debug_of(options_from(&request, DEFAULT_INPUT_CAP)),
             debug_of(with_metadata_only(zeroed))
         );
     }
