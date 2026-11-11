@@ -107,6 +107,30 @@ fn malformed_headers_return_invalid_request() {
 }
 
 #[test]
+fn payload_text_with_valid_utf8_extracts() {
+    let header = br#"{"schemaVersion":2,"payloadText":true}"#;
+    let (code, json) = extract(header, HTML.as_bytes());
+    assert_eq!(
+        code, 0,
+        "a UTF-8 payload sent as text must extract: {json:?}"
+    );
+}
+
+#[test]
+fn payload_text_with_invalid_utf8_is_invalid_request() {
+    let header = br#"{"schemaVersion":2,"payloadText":true}"#;
+    let (code, json) = extract(header, &[0xff, 0xfe]);
+    assert_eq!(code, 2);
+    let json = json.expect("code 2 writes an InvalidRequest envelope the caller owns");
+    assert_eq!(json["error"]["kind"], "InvalidRequest");
+    let reason = json["error"]["context"]["reason"]
+        .as_str()
+        .expect("the reason is a string");
+    assert!(reason.contains("not valid UTF-8"), "{reason:?}");
+    assert_failure_envelope_is_empty(&json, "payloadText with invalid UTF-8");
+}
+
+#[test]
 fn rt_version_reports_abi_schema_crate_and_core() {
     let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let code = unsafe { rt_version(&mut out, &mut len, &mut cap) };

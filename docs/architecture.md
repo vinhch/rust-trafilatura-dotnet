@@ -9,7 +9,7 @@ the "Change together" table in [AGENTS.md](../AGENTS.md).
 ## Call path
 
 1. A public entry point on `dotnet/src/RustTrafilatura/Extractor.cs::Extractor` takes the page as
-   bytes (`ExtractFromHtml` encodes a string to UTF-8 first).
+   bytes (`ExtractFromHtml` encodes a string to UTF-8 and sends it as text, see "Request header").
 2. `dotnet/src/RustTrafilatura/LibraryContract.cs::Ensure` checks the loaded library's version
    document once per process and throws `ContractVersionMismatchException` on every call after a
    mismatch.
@@ -33,11 +33,14 @@ out-parameter writes nothing. The `rust/src/lib.rs::rt_extract` doc comment is t
 ## Request header
 
 `rust/src/contract.rs::Header`: the schema version, the page URL, the options
-(`rust/src/contract.rs::OptionsJson`, with `rust/src/contract.rs::ConfigJson` for size thresholds)
-and the response fields to return (`rust/src/contract.rs::ResponseField`). Unknown keys are rejected
-at every level. The managed mirror is `dotnet/src/RustTrafilatura/HeaderContext.cs::RequestHeader`,
-serialized by source generation: `Url` and `ResponseFields` go to the top level, every other option
-under `options`.
+(`rust/src/contract.rs::OptionsJson`, with `rust/src/contract.rs::ConfigJson` for size thresholds),
+the response fields to return (`rust/src/contract.rs::ResponseField`) and `payloadText`. Unknown keys
+are rejected at every level. `payloadText: true` says the payload is UTF-8 text, which skips the byte
+path's decompression, charset detection and binary check; invalid UTF-8 under it is an
+`InvalidRequest`, and an absent or false key keeps the payload as bytes. `ExtractFromHtml` sends the
+key and the byte entry points never do. The managed mirror is
+`dotnet/src/RustTrafilatura/HeaderContext.cs::RequestHeader`, serialized by source generation: `Url`,
+`ResponseFields` and `PayloadText` go to the top level, every other option under `options`.
 
 ## Response
 

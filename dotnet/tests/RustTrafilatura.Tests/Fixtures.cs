@@ -69,6 +69,13 @@ internal static class Fixtures
     internal static string NoDateHtml { get; } =
         ArticleHtml.Replace(DateMeta, string.Empty, StringComparison.Ordinal);
 
+    /// <summary>
+    /// The article behind a PDF magic number. The byte path reads a payload that starts with it as a
+    /// binary file, unless `html` appears in its first 200 bytes, which the padding keeps it from
+    /// doing. The string path has no such check and extracts the article.
+    /// </summary>
+    internal static string PdfPrefixedHtml { get; } = "%PDF-" + new string('-', 250) + ArticleHtml;
+
     /// <summary>The article with a locale that names German, which an English target rejects.</summary>
     internal static string GermanLocaleHtml { get; } = ArticleHtml.Replace(
         "<meta charset=\"utf-8\">",

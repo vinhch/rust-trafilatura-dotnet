@@ -9,18 +9,19 @@ namespace RustTrafilatura;
 internal static class Request
 {
     /// <summary>
-    /// Assembles the request header as the bytes that cross the ABI. `responseFields` and `url`
-    /// belong at its top level while every core option belongs inside `options`, and a
-    /// member that was not set is left out so the native side applies its own default instead of a
-    /// value this layer invented.
+    /// Assembles the request header as the bytes that cross the ABI. `responseFields`, `url` and, when
+    /// the page is sent as text, `payloadText` belong at its top level while every core option belongs
+    /// inside `options`, and a member that was not set is left out so the native side applies its own
+    /// default instead of a value this layer invented.
     /// </summary>
     /// <remarks>Internal so the header's bytes, not only its parsed shape, are assertable.</remarks>
-    internal static byte[] Header(ExtractionOptions? options) =>
+    internal static byte[] Header(ExtractionOptions? options, bool payloadText = false) =>
         JsonSerializer.SerializeToUtf8Bytes(
             new RequestHeader
             {
                 ResponseFields = options?.ResponseFields,
                 Url = options?.Url,
+                PayloadText = payloadText ? true : null,
                 Options = options,
             },
             HeaderContext.Default.RequestHeader);
@@ -31,9 +32,9 @@ internal static class Request
     /// when the document is, so keeping the element without the clone would hand back a value that
     /// dies with it.
     /// </summary>
-    internal static JsonElement HeaderJson(ExtractionOptions? options)
+    internal static JsonElement HeaderJson(ExtractionOptions? options, bool payloadText = false)
     {
-        using var document = JsonDocument.Parse(Header(options));
+        using var document = JsonDocument.Parse(Header(options, payloadText));
         return document.RootElement.Clone();
     }
 }

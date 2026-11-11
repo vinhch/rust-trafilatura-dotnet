@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Text;
 using Xunit;
 
 namespace RustTrafilatura.Tests;
@@ -134,6 +135,24 @@ public sealed class BytesTests
         Assert.Equal(fromEmpty.Kind, fromNull.Kind);
         Assert.Equal(fromEmpty.Message, fromNull.Message);
         Assert.Equal(fromEmpty.Message, fromEmptySpan.Message);
+    }
+
+    /// <summary>
+    /// The string overload sends text, which skips the byte path's binary check, and the byte overload
+    /// sends the same bytes as a payload, which the check rejects. The page starts with a PDF magic
+    /// number, so the two entry points separate on that check alone.
+    /// </summary>
+    [Fact]
+    public void Html_Path_Is_Text_And_Byte_Path_Is_Bytes()
+    {
+        var fromHtml = Extractor.ExtractFromHtml(Fixtures.PdfPrefixedHtml, AllFields);
+
+        Assert.Equal("Research results", fromHtml.Metadata!.Title);
+        Assert.Contains("The research team published its findings", fromHtml.ContentText);
+
+        var bytes = Encoding.UTF8.GetBytes(Fixtures.PdfPrefixedHtml);
+        var fromBytes = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(bytes, AllFields));
+        Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromBytes.Kind);
     }
 
     /// <summary>Every response field is requested, so a member the reader left at its default shows up.</summary>

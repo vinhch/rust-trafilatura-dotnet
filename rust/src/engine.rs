@@ -58,24 +58,25 @@ pub struct Response {
     pub error: Option<ErrorEnvelope>,
 }
 
-/// Extracts from a raw payload and assembles the response. Infallible: core errors are mapped
-/// onto [`Response::error`].
-pub fn build(request: &Request, payload: &[u8]) -> Response {
+/// The page as the request delivers it. The core runs its decompression, charset detection and binary
+/// check on `Bytes` only, so `Text` is parsed as it is.
+pub enum Payload<'a> {
+    Bytes(&'a [u8]),
+    Text(&'a str),
+}
+
+/// Extracts from a payload and assembles the response. Infallible: core errors are mapped onto
+/// [`Response::error`].
+pub fn build(request: &Request, payload: Payload<'_>) -> Response {
     let extractor = options_from(request).build();
-    let mut input = Input::bytes(payload);
+    let mut input = match payload {
+        Payload::Bytes(bytes) => Input::bytes(bytes),
+        Payload::Text(text) => Input::text(text),
+    };
     if let Some(url) = request.header.url.as_deref().filter(|url| !url.is_empty()) {
         input = input.url(url);
     }
     assemble(request, extractor.bare_extraction(&input, &Call::default()))
-}
-
-/// Extracts from HTML the caller already decoded, on the same pipeline as [`build`].
-///
-/// It encodes to UTF-8 and delegates, as the README documents for `ExtractFromHtml`:
-/// the byte path detects the charset and normalizes the text (NFC, soft hyphens dropped), so a
-/// caller that skipped it would not see the same result for the same text.
-pub fn build_from_html(request: &Request, html: &str) -> Response {
-    build(request, html.as_bytes())
 }
 
 /// Fills in the requested fields of a response from the core's document, or the error envelope.
@@ -295,11 +296,16 @@ mod tests {
         format!("{:?}", options.build())
     }
 
+    /// [`build`] on raw bytes, the path most tests here cover.
+    fn build_bytes(request: &Request, payload: &[u8]) -> Response {
+        build(request, Payload::Bytes(payload))
+    }
+
     #[test]
     fn bytes_path_matches_core_on_inline_fixtures() {
         for (index, html) in FIXTURES.iter().enumerate() {
             let request = parse_request(TEXT_ONLY).unwrap();
-            let response = build(&request, html.as_bytes());
+            let response = build_bytes(&request, html.as_bytes());
             let expected = Options::new()
                 .with_metadata(false)
                 .build()
@@ -314,25 +320,37 @@ mod tests {
     }
 
     #[test]
-    fn html_string_and_bytes_agree_for_the_same_text() {
-        // Enough multi-byte characters that the byte path detects UTF-8 instead of guessing a
-        // single-byte table, plus a soft hyphen and an NFD sequence for it to normalize.
-        let html = "<html lang=\"en\"><head><title>Soft hyphen</title></head><body><article><h1>Soft hyphen</h1><p>The council approved the measure after a lengthy debate, citing the need for clearer rules on how public data is published. Officials said the new framework will take effect next spring and that compliance will be reviewed annually, with a public report published each year. A so\u{ad}ft hyphen sits beside a cafe\u{301}, a caf\u{e9}, a na\u{ef}ve r\u{e9}sum\u{e9} and a souffl\u{e9}.</p><p>A second paragraph adds enough body text for the extractor to keep the article instead of discarding it as too short.</p></article></body></html>";
+    fn payload_text_skips_the_binary_check() {
+        // A PDF magic number with no `html` near its start is a binary file to the core, so the byte
+        // path rejects it. The same bytes sent as text are a page, and the text path extracts them.
+        let html = format!("%PDF-{}{}", "-".repeat(250), FIXTURES[0]);
         let request = parse_request(TEXT_ONLY).unwrap();
-        let from_html = build_from_html(&request, html);
-        let from_bytes = build(&request, html.as_bytes());
-        assert_eq!(from_html.content_text, from_bytes.content_text);
-        let text = from_html.content_text.expect("contentText was requested");
-        assert!(!text.contains('\u{ad}'), "soft hyphen survived: {text}");
-        assert!(text.contains("soft hyphen"), "{text}");
-        assert!(text.contains("caf\u{e9}"), "{text}");
+        let from_bytes = build_bytes(&request, html.as_bytes());
+        let error = from_bytes
+            .error
+            .expect("the byte path must reject a binary magic");
+        assert_eq!(error.kind, "MissingDocument");
+        let from_text = build(&request, Payload::Text(&html));
+        assert!(from_text.error.is_none(), "{:?}", from_text.error);
+        let text = from_text.content_text.expect("contentText was requested");
+        assert!(text.contains("The council approved the measure"), "{text}");
+    }
+
+    #[test]
+    fn empty_text_payload_is_missing_document() {
+        let response = build(&parse_request(br#"{}"#).unwrap(), Payload::Text(""));
+        let error = response
+            .error
+            .expect("an empty text payload has no document");
+        assert_eq!(error.kind, "MissingDocument");
+        assert_eq!(error.message, "page rejected: empty tree");
     }
 
     #[test]
     fn gzip_input_is_decoded() {
         let request = parse_request(TEXT_ONLY).unwrap();
-        let compressed = build(&request, GZIP);
-        let plain = build(&request, GZIP_PLAIN.as_bytes());
+        let compressed = build_bytes(&request, GZIP);
+        let plain = build_bytes(&request, GZIP_PLAIN.as_bytes());
         assert!(
             !plain.content_text.as_deref().unwrap_or_default().is_empty(),
             "the plain twin must extract text, or this proves nothing"
@@ -343,7 +361,7 @@ mod tests {
 
     #[test]
     fn meta_charset_is_detected() {
-        let response = build(&parse_request(TEXT_ONLY).unwrap(), WINDOWS_1252);
+        let response = build_bytes(&parse_request(TEXT_ONLY).unwrap(), WINDOWS_1252);
         assert!(response.error.is_none(), "{:?}", response.error);
         let text = response.content_text.expect("contentText was requested");
         assert!(text.contains("r\u{e9}sum\u{e9}"), "{text}");
@@ -352,7 +370,7 @@ mod tests {
 
     #[test]
     fn empty_payload_reaches_the_core() {
-        let response = build(&parse_request(br#"{}"#).unwrap(), &[]);
+        let response = build_bytes(&parse_request(br#"{}"#).unwrap(), &[]);
         let error = response.error.expect("the core must report its own error");
         assert_eq!(error.kind, "MissingDocument");
         assert_eq!(error.message, "page rejected: empty tree");
@@ -361,7 +379,7 @@ mod tests {
 
     #[test]
     fn default_response_fields_are_text_comments_and_metadata() {
-        let response = build(&parse_request(br#"{}"#).unwrap(), FIXTURES[0].as_bytes());
+        let response = build_bytes(&parse_request(br#"{}"#).unwrap(), FIXTURES[0].as_bytes());
         assert!(!response
             .content_text
             .as_deref()
@@ -374,17 +392,17 @@ mod tests {
     #[test]
     fn response_fields_select_only_requested() {
         let html = FIXTURES[WITH_COMMENTS].as_bytes();
-        let everything = build(&parse_request(EVERYTHING).unwrap(), html);
+        let everything = build_bytes(&parse_request(EVERYTHING).unwrap(), html);
         assert!(everything.content_text.is_some());
         assert!(everything.comments_text.is_some());
         assert!(everything.metadata.is_some());
 
-        let text_only = build(&parse_request(TEXT_ONLY).unwrap(), html);
+        let text_only = build_bytes(&parse_request(TEXT_ONLY).unwrap(), html);
         assert!(text_only.content_text.is_some());
         assert!(text_only.comments_text.is_none());
         assert!(text_only.metadata.is_none());
 
-        let metadata_only = build(
+        let metadata_only = build_bytes(
             &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
             html,
         );
@@ -398,7 +416,7 @@ mod tests {
 
     #[test]
     fn metadata_is_serialized_for_the_requested_field() {
-        let response = build(
+        let response = build_bytes(
             &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
             FIXTURES[1].as_bytes(),
         );
@@ -414,7 +432,7 @@ mod tests {
 
     #[test]
     fn metadata_date_is_null_when_absent() {
-        let response = build(
+        let response = build_bytes(
             &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
             FIXTURES[0].as_bytes(),
         );
@@ -428,7 +446,7 @@ mod tests {
         // One distinct value per field, so a swap between two wire keys shows as a mismatch. The
         // url is the canonical link, and the hostname is taken from it.
         let html = r#"<html lang="en"><head><title>f-title</title><meta name="author" content="Frances Author"><meta name="description" content="f-description"><meta property="og:site_name" content="Sitename Gazette"><meta property="og:type" content="f-pagetype"><meta property="og:image" content="https://example.org/f-image.jpg"><meta property="article:tag" content="f-tag"><meta property="article:published_time" content="2026-09-29T00:00:00Z"><link rel="canonical" href="https://example.org/f-url"></head><body><article><h1>f-title</h1><p>The council approved the measure after a lengthy debate, citing the need for clearer rules on how public data is published. Officials said the new framework will take effect next spring and that compliance will be reviewed annually, with a public report published each year.</p><p class="postmeta"><a href="https://example.org/category/f-category">f-category</a></p><p><a rel="license" href="https://example.org/f-license">f-license</a></p><p>A second paragraph adds enough body text for the extractor to keep the article instead of discarding it as too short.</p></article></body></html>"#;
-        let response = build(
+        let response = build_bytes(
             &parse_request(br#"{"responseFields":["metadata"]}"#).unwrap(),
             html.as_bytes(),
         );
@@ -451,7 +469,7 @@ mod tests {
 
     #[test]
     fn url_is_the_default_metadata_url() {
-        let response = build(
+        let response = build_bytes(
             &parse_request(br#"{"url":"https://example.org/post","responseFields":["metadata"]}"#)
                 .unwrap(),
             FIXTURES[0].as_bytes(),
@@ -464,8 +482,8 @@ mod tests {
     #[test]
     fn empty_url_is_absent() {
         let html = FIXTURES[0].as_bytes();
-        let absent = build(&parse_request(EVERYTHING).unwrap(), html);
-        let empty = build(
+        let absent = build_bytes(&parse_request(EVERYTHING).unwrap(), html);
+        let empty = build_bytes(
             &parse_request(
                 br#"{"url":"","responseFields":["contentText","commentsText","metadata"]}"#,
             )
@@ -480,7 +498,7 @@ mod tests {
 
     #[test]
     fn response_keeps_its_shape_on_failure() {
-        let response = build(&parse_request(TEXT_ONLY).unwrap(), &[]);
+        let response = build_bytes(&parse_request(TEXT_ONLY).unwrap(), &[]);
         let value = serde_json::to_value(&response).unwrap();
         assert_eq!(value["schemaVersion"], 2);
         assert_eq!(value["contentText"], "");
@@ -492,7 +510,7 @@ mod tests {
 
     #[test]
     fn requested_fields_are_empty_strings_on_failure() {
-        let response = build(&parse_request(EVERYTHING).unwrap(), &[]);
+        let response = build_bytes(&parse_request(EVERYTHING).unwrap(), &[]);
         assert_eq!(response.content_text.as_deref(), Some(""));
         assert_eq!(response.comments_text.as_deref(), Some(""));
         assert!(
@@ -525,8 +543,8 @@ mod tests {
             ("every field on a failure", EVERYTHING, &[]),
         ];
         for (case, header, payload) in cases {
-            let value =
-                serde_json::to_value(build(&parse_request(header).unwrap(), payload)).unwrap();
+            let value = serde_json::to_value(build_bytes(&parse_request(header).unwrap(), payload))
+                .unwrap();
             let object = value.as_object().expect("a response is a JSON object");
             assert_eq!(object.len(), KEYS.len(), "{case}: {value}");
             for key in KEYS {
@@ -543,7 +561,7 @@ mod tests {
         for requested in FIELDS {
             let header = format!(r#"{{"responseFields":["{requested}"]}}"#);
             let value =
-                serde_json::to_value(build(&parse_request(header.as_bytes()).unwrap(), &[]))
+                serde_json::to_value(build_bytes(&parse_request(header.as_bytes()).unwrap(), &[]))
                     .unwrap();
             for field in FIELDS {
                 if field == requested {
@@ -570,7 +588,7 @@ mod tests {
             .build()
             .bare_extraction(&Input::bytes(html), &Call::default())
             .unwrap_err();
-        let response = build(
+        let response = build_bytes(
             &parse_request(br#"{"options":{"config":{"minOutputSize":10000}}}"#).unwrap(),
             html,
         );
@@ -588,7 +606,7 @@ mod tests {
     #[test]
     fn node_cap_rejects_a_page_past_500000_nodes() {
         let html = format!("<html><body>{}</body></html>", "<b></b>".repeat(500_001));
-        let response = build(&parse_request(TEXT_ONLY).unwrap(), html.as_bytes());
+        let response = build_bytes(&parse_request(TEXT_ONLY).unwrap(), html.as_bytes());
         let error = response.error.expect("500,001 elements must be rejected");
         assert_eq!(error.kind, "OutputTreeTooLong");
         assert_eq!(error.context, Some(json!({"limit": "maxNodes"})));
@@ -597,7 +615,7 @@ mod tests {
     #[test]
     fn options_absent_uses_core_defaults() {
         let html = FIXTURES[0].as_bytes();
-        let response = build(&parse_request(br#"{}"#).unwrap(), html);
+        let response = build_bytes(&parse_request(br#"{}"#).unwrap(), html);
         let expected = Options::new()
             .with_metadata(true)
             .build()
@@ -620,8 +638,8 @@ mod tests {
     #[test]
     fn empty_options_object_equals_absent_options() {
         let html = FIXTURES[0].as_bytes();
-        let absent = build(&parse_request(br#"{}"#).unwrap(), html);
-        let empty = build(&parse_request(br#"{"options":{}}"#).unwrap(), html);
+        let absent = build_bytes(&parse_request(br#"{}"#).unwrap(), html);
+        let empty = build_bytes(&parse_request(br#"{"options":{}}"#).unwrap(), html);
         assert_eq!(
             serde_json::to_value(&absent).unwrap(),
             serde_json::to_value(&empty).unwrap()

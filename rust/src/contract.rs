@@ -4,6 +4,7 @@
 //! wire shape into [`Header`]/[`OptionsJson`] and maps core errors onto contract error kinds. It
 //! never touches the core's `Options` or builds a response envelope; `engine` owns both.
 
+use crate::engine::Payload;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use trafilatura_rust::{ExtractError, InputLimit, Rejection, TreeLimit};
@@ -49,6 +50,9 @@ pub struct Header {
     pub url: Option<String>,
     pub options: Option<OptionsJson>,
     pub response_fields: Option<Vec<String>>,
+    /// `true` when the payload is UTF-8 text rather than bytes.
+    #[serde(rename = "payloadText")]
+    pub payload_text: Option<bool>,
 }
 
 /// Extraction options as they appear on the wire.
@@ -152,6 +156,21 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
     };
 
     Ok(Request { header, fields })
+}
+
+/// The payload as the header names it: text when `payloadText` is `true`, otherwise the raw bytes.
+///
+/// The payload is never echoed in the error, which names only the rule that failed.
+pub fn payload<'a>(header: &Header, bytes: &'a [u8]) -> Result<Payload<'a>, RequestError> {
+    if header.payload_text != Some(true) {
+        return Ok(Payload::Bytes(bytes));
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        RequestError::InvalidRequest(
+            "payloadText is set but the payload is not valid UTF-8".to_owned(),
+        )
+    })?;
+    Ok(Payload::Text(text))
 }
 
 /// Maps a core error onto its `kind` and optional `context`.
@@ -370,6 +389,50 @@ mod tests {
                 matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
                 "{} must be an InvalidRequest",
                 String::from_utf8_lossy(header)
+            );
+        }
+    }
+
+    #[test]
+    fn payload_text_selects_the_path_only_when_true() {
+        let invalid = [0xff, 0xfe];
+        for header in [
+            &br#"{}"#[..],
+            br#"{"payloadText":false}"#,
+            br#"{"payloadText":null}"#,
+        ] {
+            let request = parse_request(header).unwrap();
+            assert!(
+                matches!(payload(&request.header, &invalid), Ok(Payload::Bytes(bytes)) if bytes == invalid),
+                "{header:?} must keep the byte path, whatever the bytes are"
+            );
+        }
+        let request = parse_request(br#"{"payloadText":true}"#).unwrap();
+        assert!(matches!(
+            payload(&request.header, b"<p>x</p>"),
+            Ok(Payload::Text("<p>x</p>"))
+        ));
+    }
+
+    #[test]
+    fn payload_text_rejects_invalid_utf8_without_echoing_it() {
+        let request = parse_request(br#"{"payloadText":true}"#).unwrap();
+        assert!(matches!(
+            payload(&request.header, &[0xff, 0xfe]),
+            Err(RequestError::InvalidRequest(reason))
+                if reason == "payloadText is set but the payload is not valid UTF-8"
+        ));
+    }
+
+    #[test]
+    fn non_boolean_payload_text_is_invalid_request() {
+        for header in [
+            &br#"{"payloadText":"true"}"#[..],
+            &br#"{"payloadText":1}"#[..],
+        ] {
+            assert!(
+                matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+                "{header:?} must be rejected"
             );
         }
     }

@@ -110,6 +110,9 @@ internal sealed class RequestHeader
 
     public List<string>? ResponseFields { get; init; }
 
+    /// <summary>`true` when the page is sent as UTF-8 text; null otherwise, so the key is left out.</summary>
+    public bool? PayloadText { get; init; }
+
     public ExtractionOptions? Options { get; init; }
 }
 

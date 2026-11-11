@@ -91,13 +91,13 @@ public static class Extractor
     }
 
     /// <summary>
-    /// Extracts from a page the caller already holds as a string, by encoding it to UTF-8 and taking
-    /// the same path as <see cref="ExtractFromSpan"/>. For the same text the two are
-    /// interchangeable, because charset detection is a no-op on .NET's UTF-8 output. An unpaired
-    /// surrogate in <paramref name="html"/> becomes U+FFFD before the call.
+    /// Extracts from a page the caller already holds as a string. The string is encoded to UTF-8 and sent
+    /// to the native library as text (`payloadText`), so no binary check, decompression or charset
+    /// detection runs on it, which the byte entry points do. An unpaired surrogate in
+    /// <paramref name="html"/> becomes U+FFFD before the call.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
-    /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions)"/> makes, since this overload reaches it.</exception>
+    /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions)"/> makes, run here before the call.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
@@ -105,7 +105,8 @@ public static class Extractor
     public static ExtractionResult ExtractFromHtml(string html, ExtractionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(html);
+        LibraryContract.Ensure();
 
-        return ExtractFromSpan(Encoding.UTF8.GetBytes(html), options);
+        return Interop.Extract(Request.Header(options, payloadText: true), Encoding.UTF8.GetBytes(html), Response.Read);
     }
 }

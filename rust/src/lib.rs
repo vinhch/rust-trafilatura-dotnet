@@ -20,7 +20,7 @@ pub mod contract;
 pub mod engine;
 
 use crate::contract::{Request, RequestError, SCHEMA_VERSION};
-use crate::engine::{ErrorEnvelope, Response};
+use crate::engine::{ErrorEnvelope, Payload, Response};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
@@ -90,9 +90,9 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 /// [`rt_free`].
 ///
 /// `header` is the UTF-8 JSON header (`schemaVersion`, `url`, `options`,
-/// `responseFields`) and `payload` is raw HTML or gzip bytes, never base64. A null `payload` with
-/// `payload_len == 0` is empty input and reaches the core. The call runs the extraction to
-/// completion on a scoped thread.
+/// `responseFields`, `payloadText`) and `payload` is raw HTML or gzip bytes, or UTF-8 text when
+/// `payloadText` is `true`, never base64. A null `payload` with `payload_len == 0` is empty input
+/// and reaches the core. The call runs the extraction to completion on a scoped thread.
 ///
 /// Both buffers are checked before either is read, and each check can reject the request on its
 /// own: a null pointer beside a non-zero length, a header above 1 MiB, a payload above 64 MiB, or
@@ -259,6 +259,10 @@ fn run_extract(
     };
     // SAFETY: as above, and the payload buffer is only read once the header was accepted.
     let payload = unsafe { bytes(payload, payload_len) };
+    let payload = match contract::payload(&request.header, payload) {
+        Ok(payload) => payload,
+        Err(error) => return request_error(error),
+    };
     let response = on_worker_thread(&request, payload);
     let code = if response.error.is_some() {
         CODE_EXTRACTION_ERROR
@@ -321,7 +325,7 @@ fn request_error(error: RequestError) -> (i32, Vec<u8>) {
 /// `'static` bound. A panic in the worker is resumed here so its message survives to the panic
 /// boundary, and a thread that cannot start is a panic too: running the extraction on the host's
 /// stack is the outcome this design exists to avoid.
-fn on_worker_thread(request: &Request, payload: &[u8]) -> Response {
+fn on_worker_thread(request: &Request, payload: Payload<'_>) -> Response {
     std::thread::scope(|scope| {
         let handle = std::thread::Builder::new()
             .stack_size(stack_bytes())

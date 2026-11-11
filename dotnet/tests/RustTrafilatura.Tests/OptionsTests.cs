@@ -264,4 +264,20 @@ public sealed class OptionsTests
         using var document = JsonDocument.Parse(response);
         Assert.Equal("InvalidRequest", document.RootElement.GetProperty("error").GetProperty("kind").GetString());
     }
+
+    /// <summary>
+    /// The string path marks its payload as text and the byte path sends no key at all, because a
+    /// `payloadText` that reads false would still be a key the native side has to accept. The header
+    /// is asserted on its own, since the public entry points do not expose the bytes they send.
+    /// </summary>
+    [Fact]
+    public void Html_Path_Sends_PayloadText_And_Byte_Path_Does_Not()
+    {
+        var text = Request.HeaderJson(new ExtractionOptions(), payloadText: true);
+        Assert.True(text.GetProperty("payloadText").GetBoolean());
+        Assert.False(text.GetProperty("options").TryGetProperty("payloadText", out _));
+
+        var bytes = Request.HeaderJson(new ExtractionOptions());
+        Assert.False(bytes.TryGetProperty("payloadText", out _));
+    }
 }
