@@ -39,6 +39,7 @@ fn call_with(header: &[u8], payload: &[u8]) -> (i32, Option<Value>) {
             header.len(),
             payload.as_ptr(),
             payload.len(),
+            std::ptr::null(),
             &mut out,
             &mut len,
             &mut cap,

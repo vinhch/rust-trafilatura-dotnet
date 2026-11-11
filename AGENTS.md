@@ -5,7 +5,8 @@ is linked into a native library per RID and called in process over a C ABI. Extr
 belongs to the core; this repository owns the ABI, the JSON contract between the two sides and the
 managed surface. A change is correct when the managed result equals what the core returns for the
 same input and options, the contract stays versioned, and nothing escapes the boundary: a panic never
-unwinds into the host (it becomes the panic return code with a `Panic` envelope) and nothing is
+unwinds into the host (`rt_extract` and `rt_version` return the panic code with a `Panic` envelope,
+`rt_cancel_new` returns null, and `rt_free`, `rt_cancel` and `rt_cancel_free` swallow it) and nothing is
 written to stderr. A migration to a new core is in progress; [docs/phase-plan.md](docs/phase-plan.md)
 says what ships next.
 

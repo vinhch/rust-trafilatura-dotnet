@@ -174,6 +174,7 @@ internal static class Program
                 (nuint)header.Length,
                 payloadPointer,
                 (nuint)payload.Length,
+                0,
                 &pointer,
                 &length,
                 &capacity);
@@ -280,6 +281,7 @@ internal static partial class Native
         nuint headerLength,
         byte* payload,
         nuint payloadLength,
+        nint cancel,
         nint* outPointer,
         nint* outLength,
         nint* outCapacity);

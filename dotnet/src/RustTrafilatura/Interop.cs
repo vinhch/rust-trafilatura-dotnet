@@ -67,6 +67,7 @@ internal static partial class Interop
                         (nuint)header.Length,
                         payloadPointer,
                         (nuint)payload.Length,
+                        0,
                         &outPointer,
                         &outLength,
                         &outCapacity);
@@ -139,6 +140,7 @@ internal static partial class Interop
         nuint headerLength,
         byte* payload,
         nuint payloadLength,
+        nint cancel,
         nint* outPointer,
         nint* outLength,
         nint* outCapacity);

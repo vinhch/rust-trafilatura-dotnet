@@ -186,7 +186,8 @@ pub fn payload<'a>(header: &Header, bytes: &'a [u8]) -> Result<Payload<'a>, Requ
 pub fn error_kind(error: &ExtractError) -> (&'static str, Option<Value>) {
     match error {
         ExtractError::Rejected(rejection) => rejection_kind(*rejection),
-        // Cancelled and DeadlineExceeded have no wire kind yet.
+        ExtractError::Cancelled => ("Cancelled", None),
+        // DeadlineExceeded has no wire kind yet: the wrapper sets no deadline.
         _ => ("Unknown", None),
     }
 }
@@ -633,7 +634,7 @@ mod tests {
                 "InputTooLarge",
                 Some(json!({"limit": "jsonSize"})),
             ),
-            (ExtractError::Cancelled, "Unknown", None),
+            (ExtractError::Cancelled, "Cancelled", None),
             (ExtractError::DeadlineExceeded, "Unknown", None),
         ];
         for (error, kind, context) in cases {

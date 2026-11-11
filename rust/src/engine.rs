@@ -8,7 +8,7 @@
 use crate::contract::{self, ConfigJson, Payload, Request, ResponseField, SCHEMA_VERSION};
 use serde::Serialize;
 use trafilatura_rust::{
-    Call, Config, Document, ExtractError, Focus, Input, InputLimit, Options, Rejection,
+    Call, CancelToken, Config, Document, ExtractError, Focus, Input, InputLimit, Options, Rejection,
 };
 
 /// The response `metadata` object: the metadata fields of the core [`Document`] under their wire
@@ -61,8 +61,14 @@ pub struct Response {
 }
 
 /// Extracts from a payload and assembles the response. Infallible: core errors are mapped onto
-/// [`Response::error`]. `max_input_bytes` is the core's input cap, and `None` lifts it.
-pub fn build(request: &Request, payload: Payload<'_>, max_input_bytes: Option<usize>) -> Response {
+/// [`Response::error`]. `max_input_bytes` is the core's input cap, and `None` lifts it. `cancel`, when
+/// present, stops the extraction once it is cancelled, which fails with `Cancelled`.
+pub fn build(
+    request: &Request,
+    payload: Payload<'_>,
+    max_input_bytes: Option<usize>,
+    cancel: Option<&CancelToken>,
+) -> Response {
     let extractor = options_from(request, max_input_bytes).build();
     let mut input = match payload {
         Payload::Bytes(bytes) => Input::bytes(bytes),
@@ -71,7 +77,8 @@ pub fn build(request: &Request, payload: Payload<'_>, max_input_bytes: Option<us
     if let Some(url) = request.header.url.as_deref().filter(|url| !url.is_empty()) {
         input = input.url(url);
     }
-    assemble(request, extractor.bare_extraction(&input, &Call::default()))
+    let call = cancel.map_or_else(Call::default, |token| Call::default().cancel(token));
+    assemble(request, extractor.bare_extraction(&input, &call))
 }
 
 /// The response for a payload over the input cap. It is assembled from the core's own
@@ -308,7 +315,7 @@ mod tests {
 
     /// [`build`] on raw bytes, the path most tests here cover.
     fn build_bytes(request: &Request, payload: &[u8]) -> Response {
-        build(request, Payload::Bytes(payload), DEFAULT_INPUT_CAP)
+        build(request, Payload::Bytes(payload), DEFAULT_INPUT_CAP, None)
     }
 
     #[test]
@@ -340,7 +347,7 @@ mod tests {
             .error
             .expect("the byte path must reject a binary magic");
         assert_eq!(error.kind, "MissingDocument");
-        let from_text = build(&request, Payload::Text(&html), DEFAULT_INPUT_CAP);
+        let from_text = build(&request, Payload::Text(&html), DEFAULT_INPUT_CAP, None);
         assert!(from_text.error.is_none(), "{:?}", from_text.error);
         let text = from_text.content_text.expect("contentText was requested");
         assert!(text.contains("The council approved the measure"), "{text}");
@@ -352,6 +359,7 @@ mod tests {
             &parse_request(br#"{}"#).unwrap(),
             Payload::Text(""),
             DEFAULT_INPUT_CAP,
+            None,
         );
         let error = response
             .error

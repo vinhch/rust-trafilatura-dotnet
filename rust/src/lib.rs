@@ -5,14 +5,16 @@
 //! - `contract`: request header and response JSON types, plus validation.
 //! - `engine`: core invocation and response assembly.
 //!
-//! The exported symbols (`rt_extract`, `rt_free`, `rt_version` and the
-//! `test-hooks`-gated test hooks) and the library's `unsafe` code belong in this file: pointer dereference, the `Vec`
-//! reconstruction in `rt_free` and the `catch_unwind` boundary. A caller opens an `unsafe` block at
-//! the call site, because an `unsafe extern "C"` function cannot be called from safe code. Each
-//! export validates its out-parameters, and `rt_extract` validates its header size, before reading or
-//! writing anything; the payload size is checked before the payload is read. Each export runs
-//! its body behind a panic boundary, so a panic becomes return code 3 with a `Panic` envelope instead
-//! of unwinding into the host process.
+//! The exported symbols (`rt_extract`, `rt_free`, `rt_version`, `rt_cancel_new`, `rt_cancel`,
+//! `rt_cancel_free` and the `test-hooks`-gated test hooks) and the library's `unsafe` code belong in
+//! this file: pointer dereference, the `Vec` reconstruction in `rt_free` and the `catch_unwind`
+//! boundary. A caller opens an `unsafe` block at the call site, because an `unsafe extern "C"`
+//! function cannot be called from safe code. Each export validates its out-parameters, and
+//! `rt_extract` validates its header size, before reading or writing anything; the payload size is
+//! checked before the payload is read. `rt_extract` and `rt_version` turn a panic into return code 3
+//! with a `Panic` envelope, `rt_cancel_new` returns null instead, and `rt_free`, `rt_cancel` and
+//! `rt_cancel_free` swallow it, since they return nothing to report it through. No export unwinds
+//! into the host process.
 //!
 //! A panic hook installed on the first export call keeps the default hook's stderr output out of
 //! the host process, because a library inside a .NET host must not write there.
@@ -28,6 +30,7 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 #[cfg(feature = "test-hooks")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use trafilatura_rust::CancelToken;
 
 /// The ABI version. Independent of both the crate version and [`SCHEMA_VERSION`].
 const ABI_VERSION: u32 = 2;
@@ -97,16 +100,23 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 /// is read once, so a value set after the first call has no effect, and `0` disables the cap it
 /// names.
 ///
+/// `cancel` is null for a call that cannot be cancelled, or a handle from [`rt_cancel_new`]. Once
+/// [`rt_cancel`] has been called on that handle, the extraction stops at its next check and the call
+/// returns `1` with a `Cancelled` envelope that has no `context`. The handle is read only after the
+/// header and payload checks, so a refused request keeps its own code whatever the handle holds.
+///
 /// # Safety
 ///
 /// `header` and `payload` must each point to the number of readable bytes their length argument
-/// states, and `out`, `out_len` and `out_cap` must be valid, writable pointers.
+/// states, `cancel` must be null or a handle from [`rt_cancel_new`] that has not been passed to
+/// [`rt_cancel_free`], and `out`, `out_len` and `out_cap` must be valid, writable pointers.
 #[no_mangle]
 pub unsafe extern "C" fn rt_extract(
     header: *const u8,
     header_len: usize,
     payload: *const u8,
     payload_len: usize,
+    cancel: *const CancelHandle,
     out: *mut *mut u8,
     out_len: *mut usize,
     out_cap: *mut usize,
@@ -115,7 +125,7 @@ pub unsafe extern "C" fn rt_extract(
     if out.is_null() || out_len.is_null() || out_cap.is_null() {
         return CODE_INVALID_REQUEST;
     }
-    let (code, bytes) = guarded(|| run_extract(header, header_len, payload, payload_len));
+    let (code, bytes) = guarded(|| run_extract(header, header_len, payload, payload_len, cancel));
     write_out(out, out_len, out_cap, bytes);
     code
 }
@@ -141,6 +151,53 @@ pub unsafe extern "C" fn rt_free(ptr: *mut u8, len: usize, cap: usize) {
     }));
     #[cfg(feature = "test-hooks")]
     LIVE_BUFFERS.fetch_sub(1, Ordering::SeqCst);
+}
+
+/// A cancellation handle for [`rt_extract`]: create it with [`rt_cancel_new`], cancel it from any
+/// thread with [`rt_cancel`], and release it with [`rt_cancel_free`]. The C side sees only a pointer.
+pub struct CancelHandle(CancelToken);
+
+/// Creates a cancellation handle that is not cancelled, or returns null when creating it panics.
+///
+/// The caller releases the handle with [`rt_cancel_free`] once no call still uses it.
+#[no_mangle]
+pub extern "C" fn rt_cancel_new() -> *mut CancelHandle {
+    silence_panics();
+    catch_unwind(|| Box::into_raw(Box::new(CancelHandle(CancelToken::new()))))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Cancels every call holding the handle. A null `handle` returns immediately.
+///
+/// # Safety
+///
+/// `handle` must be null or a handle from [`rt_cancel_new`] that has not been passed to
+/// [`rt_cancel_free`]. It may be called from any thread while a call holds the handle.
+#[no_mangle]
+pub unsafe extern "C" fn rt_cancel(handle: *const CancelHandle) {
+    silence_panics();
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(handle) = unsafe { handle.as_ref() } {
+            handle.0.cancel();
+        }
+    }));
+}
+
+/// Releases a handle from [`rt_cancel_new`]. A null `handle` returns immediately.
+///
+/// # Safety
+///
+/// `handle` must be null or a handle from [`rt_cancel_new`] that has not been released, and no call
+/// may still hold it.
+#[no_mangle]
+pub unsafe extern "C" fn rt_cancel_free(handle: *mut CancelHandle) {
+    silence_panics();
+    if handle.is_null() {
+        return;
+    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        drop(unsafe { Box::from_raw(handle) });
+    }));
 }
 
 /// Reports the ABI version, the JSON schema version, the crate version and the core version.
@@ -235,6 +292,7 @@ fn run_extract(
     header_len: usize,
     payload: *const u8,
     payload_len: usize,
+    cancel: *const CancelHandle,
 ) -> (i32, Vec<u8>) {
     if let Err(error) = check_input(header, header_len, payload, payload_len, header_cap()) {
         return request_error(error);
@@ -256,8 +314,11 @@ fn run_extract(
         Ok(payload) => payload,
         Err(error) => return request_error(error),
     };
+    // SAFETY: `cancel` is null or a live handle, as the `rt_extract` contract states. It is read here,
+    // after the checks above, so a rejected call never touches the handle.
+    let cancel = unsafe { cancel.as_ref() }.map(|handle| &handle.0);
     let response = on_worker_thread(extraction_stack(), || {
-        engine::build(&request, payload, max_input_bytes())
+        engine::build(&request, payload, max_input_bytes(), cancel)
     });
     let code = if response.error.is_some() {
         CODE_EXTRACTION_ERROR
@@ -480,6 +541,7 @@ fn write_out(out: *mut *mut u8, out_len: *mut usize, out_cap: *mut usize, bytes:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::Payload;
 
     /// A pointer whose address is valid but whose bytes are not: [`check_input`] only compares
     /// lengths, so an impossible buffer length is safe to test against it.
@@ -559,5 +621,20 @@ mod tests {
             let message = panic_message(&*caught.expect_err("the panic must reach the caller"));
             assert_eq!(message, "worker panic", "stack {stack:?}");
         }
+    }
+
+    #[test]
+    fn worker_thread_carries_the_cancel_token() {
+        const PAGE: &[u8] = br#"<html lang="en"><head><title>Worker page</title></head><body><article><h1>Worker page</h1><p>The council approved the measure after a lengthy debate, citing the need for clearer rules on how public data is published. Officials said the new framework will take effect next spring.</p><p>A second paragraph adds enough body text for the extractor to keep the article instead of discarding it as too short.</p></article></body></html>"#;
+        let request = contract::parse_request(br#"{"responseFields":["contentText"]}"#).unwrap();
+        let token = CancelToken::new();
+        token.cancel();
+        let response = on_worker_thread(Some(WORKER_STACK_BYTES), || {
+            engine::build(&request, Payload::Bytes(PAGE), None, Some(&token))
+        });
+        let error = response
+            .error
+            .expect("a cancelled token must stop the extraction on the worker thread");
+        assert_eq!(error.kind, "Cancelled");
     }
 }

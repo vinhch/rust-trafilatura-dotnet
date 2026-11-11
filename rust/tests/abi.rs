@@ -5,14 +5,26 @@
 //! exports are `unsafe` because the caller owns the pointers, so every call sits in an `unsafe`
 //! block.
 
-use rust_trafilatura_ffi::{rt_extract, rt_free, rt_version};
+use rust_trafilatura_ffi::{
+    rt_cancel, rt_cancel_free, rt_cancel_new, rt_extract, rt_free, rt_version, CancelHandle,
+};
 use serde_json::Value;
+use std::time::{Duration, Instant};
 
 /// Enough article text for the core to keep the document instead of rejecting it as too short.
 const HTML: &str = r#"<html lang="en"><head><title>Inline article</title></head><body><article><h1>Inline article</h1><p>This inline article carries enough text for the extractor to keep it, because the core discards documents shorter than its minimum output size. The council approved the measure after a lengthy debate, citing the need for clearer rules on how public data is published.</p><p>A second paragraph adds enough body text for the extractor to keep the article instead of discarding it as too short.</p></article></body></html>"#;
 
 /// Calls `rt_extract` and returns its return code plus the parsed response.
 fn extract(header: &[u8], payload: &[u8]) -> (i32, Option<Value>) {
+    extract_cancellable(std::ptr::null(), header, payload)
+}
+
+/// Calls `rt_extract` with `cancel` as its handle and returns its return code plus the parsed response.
+fn extract_cancellable(
+    cancel: *const CancelHandle,
+    header: &[u8],
+    payload: &[u8],
+) -> (i32, Option<Value>) {
     let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let code = unsafe {
         rt_extract(
@@ -20,12 +32,26 @@ fn extract(header: &[u8], payload: &[u8]) -> (i32, Option<Value>) {
             header.len(),
             payload.as_ptr(),
             payload.len(),
+            cancel,
             &mut out,
             &mut len,
             &mut cap,
         )
     };
     (code, take_json(out, len, cap))
+}
+
+/// A page of `paragraphs` paragraphs, each a sentence long, for a call that must run long enough to
+/// be cancelled mid-extraction.
+fn dense_page(paragraphs: usize) -> String {
+    let body: String = (0..paragraphs)
+        .map(|index| {
+            format!("<p>Paragraph {index} of a long article about council data rules.</p>")
+        })
+        .collect();
+    format!(
+        r#"<html lang="en"><head><title>Dense page</title></head><body><article>{body}</article></body></html>"#
+    )
 }
 
 /// Copies the returned buffer and releases it. A null buffer yields `None`.
@@ -175,6 +201,7 @@ fn null_out_params_are_rejected_without_writing() {
             header.len(),
             payload.as_ptr(),
             payload.len(),
+            std::ptr::null(),
             out,
             out_len,
             out_cap,
@@ -229,4 +256,82 @@ fn null_out_params_are_rejected_without_writing() {
     );
     assert!(out.is_null(), "a rejected call must not write *out");
     assert_eq!(len, LEN, "rt_version must not write *out_len");
+}
+
+#[test]
+fn pre_cancelled_handle_returns_cancelled() {
+    let header = br#"{"responseFields":["contentText"]}"#;
+    let handle = rt_cancel_new();
+    assert!(!handle.is_null(), "rt_cancel_new must return a handle");
+    unsafe { rt_cancel(handle) };
+
+    let (code, json) = extract_cancellable(handle, header, HTML.as_bytes());
+    unsafe { rt_cancel_free(handle) };
+
+    assert_eq!(
+        code, 1,
+        "a cancelled call returns the extraction-error code"
+    );
+    let json = json.expect("code 1 returns an envelope");
+    assert_eq!(json["error"]["kind"], "Cancelled", "{json}");
+    assert_eq!(json["error"]["message"], "extraction cancelled", "{json}");
+    assert!(json["error"]["context"].is_null(), "{json}");
+}
+
+#[test]
+fn null_handle_extracts_normally() {
+    let header = br#"{"responseFields":["contentText"]}"#;
+    let (code, json) = extract_cancellable(std::ptr::null(), header, HTML.as_bytes());
+    assert_eq!(code, 0, "{json:?}");
+    let json = json.expect("code 0 returns a buffer");
+    assert!(
+        !json["contentText"]
+            .as_str()
+            .expect("contentText is a string")
+            .is_empty(),
+        "{json}"
+    );
+}
+
+#[test]
+fn cancel_from_another_thread_stops_a_large_page() {
+    let header = br#"{"responseFields":["contentText"]}"#;
+    let page = dense_page(200_000);
+
+    // The cancel comes 5 ms in, so the uncancelled run must take far longer, or the cancel could land
+    // after the call already finished and the test would pass by luck.
+    let started = Instant::now();
+    let (code, json) = extract(header, page.as_bytes());
+    let uncancelled = started.elapsed();
+    assert_eq!(code, 0, "the uncancelled page must extract: {json:?}");
+    assert!(
+        uncancelled >= Duration::from_millis(50),
+        "the uncancelled run took {uncancelled:?}, too fast to cancel 5 ms in"
+    );
+
+    let handle = rt_cancel_new();
+    assert!(!handle.is_null(), "rt_cancel_new must return a handle");
+    let address = handle as usize;
+    let (code, json) = std::thread::scope(|scope| {
+        scope.spawn(move || {
+            std::thread::sleep(Duration::from_millis(5));
+            unsafe { rt_cancel(address as *const CancelHandle) };
+        });
+        extract_cancellable(handle, header, page.as_bytes())
+    });
+    unsafe { rt_cancel_free(handle) };
+
+    assert_eq!(code, 1, "{json:?}");
+    assert_eq!(
+        json.expect("code 1 returns an envelope")["error"]["kind"],
+        "Cancelled"
+    );
+}
+
+#[test]
+fn cancel_exports_accept_null() {
+    unsafe {
+        rt_cancel(std::ptr::null());
+        rt_cancel_free(std::ptr::null_mut());
+    }
 }
