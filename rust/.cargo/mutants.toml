@@ -6,11 +6,11 @@ test_tool = "nextest"
 
 # src/lib.rs is the C ABI glue: the entry points, the out-parameter and cap checks, the pointer views
 # and the buffer ownership. Nothing inside the crate calls an export, so a test binary reaches it only
-# through the same extern "C" door a foreign caller uses -- but mutating it is not worthless: measured
-# with this exclusion lifted, the tests kill most of its mutants, so the file is reachable and the
-# suite does cover most of it. What decides the exclusion is the residue. Some survive, and they
-# cluster where no test can look: the test-hooks-gated live-buffer counter
-# that the default feature set does not compile, and the panic-message path, whose hook swallows
+# through the same extern "C" door a foreign caller uses. What decides the exclusion is the residue:
+# survivors cluster where no test can look, in the test-hooks-gated live-buffer counter
+# that the default feature set does not compile, and in the panic-message path, whose hook swallows
 # libtest's own output. That residue would be a permanent weekly survivor list, so the mutant set is
 # confined to the two modules that hold the logic the tests aim at: src/contract.rs and src/engine.rs.
+# The survivor list has not been re-measured since the stack arithmetic was removed; re-run
+# cargo-mutants to refresh it.
 exclude_globs = ["src/lib.rs"]

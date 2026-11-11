@@ -21,14 +21,14 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
 | 3 | 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | Not started | Full suites green; a cancel mid-extraction throws in under a quarter of the uncancelled run; a pre-cancelled token throws without a native call; a cancel between `rt_extract` returning and the registration dispose returns the normal result; the managed `SafeHandle` live count is zero after single and concurrent runs | 2 |
-| 4 | 4. Release: CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed; release notes list the date format, `HtmlDateMode.Default`, the `max_nodes` rejection, empty input as `MissingDocument`, `Metadata.Language` always empty until crate OI-4, and extraction on a fixed 1 MiB worker thread on macOS (the caller's thread elsewhere); `cargo deny check` warns about three unused allowances in `rust/deny.toml` (lines 15, 17, 19), remove them | 2, 3 |
+| 4 | 4. Release: CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed; release notes list the date format, `HtmlDateMode.Default`, the `max_nodes` rejection, empty input as `MissingDocument`, `Metadata.Language` always empty until crate OI-4, an oversized payload as `InputTooLarge` (code 1) instead of `InvalidRequest` (code 2), `ExtractFromHtml` skipping the binary check, decompression and charset detection so a string starting with `%PDF-` extracts instead of failing, and extraction on a fixed 1 MiB worker thread on macOS (the caller's thread elsewhere); README states that extraction on a host other than `dotnet.exe` or an apphost needs a 1 MiB caller thread stack on Windows and Linux, and that IIS `w3wp.exe` hosting is unchecked; `cargo deny check` warns about three unused allowances in `rust/deny.toml` (lines 15, 17, 19), remove them | 2, 3 |
 
 ### Shipped phases
 
 | Phase | Shipped in |
 | --- | --- |
 | 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `3d8960b..e004856` and the phase-closing commit |
-| 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `20645fc..c0b8b41` and the phase-closing commit |
+| 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `b0eb0e4..c0b8b41` and the phase-closing commit |
 
 ## Open items register
 

@@ -57,9 +57,10 @@ the table names another:
 - The ABI and schema versions bump together with their checks (row "ABI or schema bump" below).
 - Unknown header keys are rejected at every level (`deny_unknown_fields` in `rust/src/contract.rs`);
   never loosen that.
-- Every export checks its out-parameters before reading or writing anything. `rt_extract` checks the header size before it parses the header, and the core checks the payload size before it reads the payload. Every export
-  runs its body behind the panic boundary. A deliberate panic inside it is fine (the worker-thread
-  `expect` in `rust/src/lib.rs::on_worker_thread`).
+- Every export checks its out-parameters before reading or writing anything. `rt_extract` checks the header size
+  before it parses the header, checks the payload against its cap after the header is parsed and before any payload
+  byte is read, and the core checks it again. Every export runs its body behind the panic boundary. A deliberate
+  panic inside it is fine (the worker-thread `expect` in `rust/src/lib.rs::on_worker_thread`).
 - The library does no I/O, writes nothing to stderr and never echoes the input HTML in an error.
 - `rust/src/lib.rs::rt_free` gets the exact (pointer, length, capacity) triple a call handed out,
   once; the managed side frees in `finally`.
