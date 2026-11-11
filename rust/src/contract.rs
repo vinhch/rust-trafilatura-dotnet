@@ -4,7 +4,6 @@
 //! wire shape into [`Header`]/[`OptionsJson`] and maps core errors onto contract error kinds. It
 //! never touches the core's `Options` or builds a response envelope; `engine` owns both.
 
-use crate::engine::Payload;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use trafilatura_rust::{ExtractError, InputLimit, Rejection, TreeLimit};
@@ -156,6 +155,13 @@ pub fn parse_request(header: &[u8]) -> Result<Request, RequestError> {
     };
 
     Ok(Request { header, fields })
+}
+
+/// The page as the request delivers it. The core runs its decompression, charset detection and binary
+/// check on `Bytes` only, so `Text` is parsed as it is.
+pub enum Payload<'a> {
+    Bytes(&'a [u8]),
+    Text(&'a str),
 }
 
 /// The payload as the header names it: text when `payloadText` is `true`, otherwise the raw bytes.

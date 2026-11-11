@@ -5,7 +5,7 @@
 //! the request named. A core error is not returned as `Err`; it lands in [`Response::error`], so
 //! success and failure keep one envelope shape.
 
-use crate::contract::{self, ConfigJson, Request, ResponseField, SCHEMA_VERSION};
+use crate::contract::{self, ConfigJson, Payload, Request, ResponseField, SCHEMA_VERSION};
 use serde::Serialize;
 use trafilatura_rust::{
     Call, Config, Document, ExtractError, Focus, Input, InputLimit, Options, Rejection,
@@ -58,13 +58,6 @@ pub struct Response {
     pub comments_text: Option<String>,
     pub metadata: Option<MetadataJson>,
     pub error: Option<ErrorEnvelope>,
-}
-
-/// The page as the request delivers it. The core runs its decompression, charset detection and binary
-/// check on `Bytes` only, so `Text` is parsed as it is.
-pub enum Payload<'a> {
-    Bytes(&'a [u8]),
-    Text(&'a str),
 }
 
 /// Extracts from a payload and assembles the response. Infallible: core errors are mapped onto
