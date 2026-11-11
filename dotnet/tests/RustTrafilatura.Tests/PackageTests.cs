@@ -6,7 +6,7 @@ namespace RustTrafilatura.Tests;
 
 /// <summary>
 /// Checks the packed <c>.nupkg</c> itself: what a consumer installs has to carry the native library
-/// for every RID that was staged, this repository's licence and notices and the README at its root,
+/// for every RID that was staged, this repository's licence, notices and changelog and the README at its root,
 /// and both library assets, and it must not carry the build stamp that sits beside each staged
 /// library.
 /// </summary>
@@ -40,9 +40,9 @@ public sealed class PackageTests
 
     /// <summary>
     /// The files the package carries at its root beside the two managed assets: this repository's MIT
-    /// text and its third-party notices.
+    /// text, its third-party notices and the changelog.
     /// </summary>
-    private static readonly string[] PackageNoticeFiles = ["LICENSE", "THIRD-PARTY-NOTICES.md"];
+    private static readonly string[] PackageNoticeFiles = ["LICENSE", "THIRD-PARTY-NOTICES.md", "CHANGELOG.md"];
 
     /// <summary>
     /// The library file one RID stages, or null for a directory name that is not a RID this package

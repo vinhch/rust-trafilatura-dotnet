@@ -14,6 +14,8 @@ three.
 
 ## 2. Tag and push
 
+Before tagging, add the version's section to `CHANGELOG.md` (or replace the `unreleased` marker of its section with the tag date), commit it, then tag. The package carries `CHANGELOG.md` as it was at pack time, and nuget.org keeps that copy.
+
 ```console
 git tag vX.Y.Z
 git push origin vX.Y.Z

@@ -62,12 +62,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The README, this repository's MIT LICENSE and the third-party notices, all at the package root. They live at the repository
+    <!-- The README, this repository's MIT LICENSE, the third-party notices and the changelog, all at the package root. They live at the repository
          root, three levels above this project, and are named by absolute path because NuGet resolves a
          package entry's Include against the package output directory, not against this project. -->
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../README.md'))" Pack="true" PackagePath="/" />
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../LICENSE'))" Pack="true" PackagePath="/" />
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../THIRD-PARTY-NOTICES.md'))" Pack="true" PackagePath="/" />
+    <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../CHANGELOG.md'))" Pack="true" PackagePath="/" />
   </ItemGroup>
 
   <!-- The native libraries, one entry per RID, staged by scripts/build.* under

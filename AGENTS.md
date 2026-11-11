@@ -15,6 +15,7 @@ says what ships next.
 | Document | Read it when | Update it when |
 | --- | --- | --- |
 | [README.md](README.md) | for the public API, options, errors, platforms and limits, as a package user sees them | the public surface, an option, an error kind or a limit changes |
+| [CHANGELOG.md](CHANGELOG.md) | for what changed between releases | behavior a caller can see, the public surface or an error kind changes |
 | [docs/architecture.md](docs/architecture.md) | before touching the ABI, the header, the response, errors, the version document, memory ownership or caps | any of those changes |
 | [docs/development.md](docs/development.md) | before running or changing scripts, tests, benchmarks or CI, and to run the docs check | a script, flag, prerequisite, test convention or workflow changes |
 | [docs/releasing.md](docs/releasing.md) | before setting a version, tagging or publishing | the release or publish flow changes |

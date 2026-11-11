@@ -1,6 +1,6 @@
-# RustTrafilatura DotNet ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/rust-trafilatura-dotnet/ci.yml?branch=main) [![Nuget](https://img.shields.io/nuget/v/RustTrafilatura?maxAge=3600)](https://www.nuget.org/packages/RustTrafilatura/)
+Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none. With `IncludeImages`, a value the core cannot join gives `InvalidValue` |# RustTrafilatura DotNet ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/rust-trafilatura-dotnet/ci.yml?branch=main) [![Nuget](https://img.shields.io/nuget/v/RustTrafilatura?maxAge=3600)](https://www.nuget.org/packages/RustTrafilatura/)
 
-.NET binding for [`rust-trafilatura`](https://github.com/markusmobius/rust-trafilatura), the crate linked into a native library per RID and called in
+.NET binding for [`trafilatura-rust`](https://crates.io/crates/trafilatura-rust), the crate linked into a native library per RID and called in
 process over a length-delimited C ABI. Extraction is the crate's; this package supplies the ABI, the
 JSON contract and the managed surface. The payload crosses as a raw byte buffer and the response is
 parsed from the native bytes, with no base64, no UTF-16 copy and no intermediate `string`.
@@ -45,7 +45,7 @@ var result = Extractor.ExtractFromHtml(Html, new ExtractionOptions
 
 Console.WriteLine("Title: " + result.Metadata!.Title); // Council approves the new library
 Console.WriteLine("Author: " + result.Metadata.Author); // Ada Lovelace
-Console.WriteLine("Date: " + result.Metadata.Date?.ToString("yyyy-MM-dd")); // 2026-10-08
+Console.WriteLine("Date: " + result.Metadata.Date); // 2026-10-08
 Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or footer
 ```
 
@@ -58,7 +58,7 @@ Console.WriteLine("Text: " + result.ContentText); // the article text, no nav or
 | `Extractor.ExtractFromHtml(string html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | Extracts a page held as a string, encoding it as UTF-8 before the path below |
 | `Extractor.ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | Extracts bytes that are memory-backed: a `byte[]`, a slice, a pooled rent or a memory view, none of them copied |
 | `Extractor.ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)` | The same pipeline one step earlier, for a buffer no memory view can express: a `stackalloc` one or unmanaged memory behind a pointer |
-| `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `rust-trafilatura` core it links |
+| `Extractor.LibraryVersion` | What the loaded native library says about itself: the `abi` and `schemaVersion` it implements, the version of this binding's crate and the version of the `trafilatura-rust` core it links |
 
 ### Options
 
@@ -97,7 +97,7 @@ catch (ContractVersionMismatchException)
 }
 catch (TrafilaturaException exception) when (exception.Kind == TrafilaturaErrorKind.OutputTooShort)
 {
-    // The page extracted too little text. ContextJson is {"content": 12, "comments": 0}, and the
+    // The page extracted too little text. ContextJson is {"textChars": 12, "commentsChars": 0}, and the
     // Config thresholds behind it are the caller's to lower.
     return;
 }
@@ -122,7 +122,7 @@ result.Metadata!.Sitename      // site name
 result.Metadata!.Categories    // IReadOnlyList<string>, never null
 result.Metadata!.Tags          // IReadOnlyList<string>, never null
 result.Metadata!.License       // content licence
-result.Metadata!.Language      // detected language
+result.Metadata!.Language      // always empty until the core reports a language
 result.Metadata!.Image         // featured image URL
 result.Metadata!.PageType      // page type, such as "article"
 ```
@@ -131,16 +131,16 @@ Note: a member the request did not name is null; one it named that the page has 
 
 | `TrafilaturaException.Kind` | Raised when | Context |
 | --- | --- | --- |
-| `Io` | a compressed payload cannot be read | |
-| `UnsupportedCharset` | not raised: no option sets an input encoding, so the charset is always detected | |
-| `CharsetNotDetected` | the payload's charset cannot be detected | |
-| `MissingDocument` | the parser found no document | |
+| `MissingDocument` | the parser found no document, including empty input | |
 | `HtmlLanguage` | the page's own declared language does not match `TargetLanguage` | |
-| `WrongLanguage` | the language of the extracted text does not match `TargetLanguage` | |
-| `RequiredTitle`, `RequiredUrl`, `RequiredDate` | `HasEssentialMetadata` is set and that piece is missing | |
-| `OutputTreeTooLong` | the extracted tree exceeds `MaxTreeSize` | `count` |
-| `OutputTooShort` | the extracted text is under the `Config` thresholds | `content`, `comments` |
+| `WrongLanguage` | not raised until the core reports a language: only the `<html lang>` check applies | |
+| `MissingMetadata` | `HasEssentialMetadata` is set and a piece is missing | `missing`: the names of the missing pieces |
+| `OutputTreeTooLong` | the extracted tree exceeds a limit | `limit`: `maxTreeSize`, `maxNodes`, `tagAttributes` or `tableCells`; `children` as well for `maxTreeSize` |
+| `OutputTooShort` | the extracted text is under the `Config` thresholds | `textChars`, `commentsChars` |
+| `InputTooLarge` | the payload or a document limit is exceeded | `limit`: `maxInputBytes`, `maxFileSize`, `jsonSize` or `unknown` |
 | `DuplicateBody` | not raised: deduplication is off and no option turns it on | |
+| `BlacklistedUrl` | not raised: no option sets a URL blacklist | |
+| `InvalidValue` | the core rejected a value, such as an image URL it cannot join | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
 | `Unknown` | the library reported a kind this client version does not recognise | |
@@ -165,7 +165,7 @@ try
 }
 catch (OperationCanceledException)
 {
-    // The time budget ran out. The native work stopped at its next check.
+    // The two seconds ran out. The native work stopped at its next check.
     return;
 }
 ```
@@ -281,20 +281,22 @@ committed consumer with `-p:PublishAot=true` for `win-x64` and `linux-x64` only,
   parsing; `MaxTreeSize` bounds the extracted tree, not the input, and is not a denial-of-service
   bound.
 - One-shot and synchronous: a call blocks its thread until it returns or throws. There is no async entry point; cancellation is the `CancellationToken` parameter, described under Cancellation.
+- **Extraction needs a 1 MiB stack.** On Windows and Linux it runs on the caller's thread. `dotnet.exe`, an apphost and the thread pool provide that much; on Linux with glibc that holds while the `RLIMIT_STACK` soft limit is at least 1 MiB. A host other than these has to call from a thread with a 1 MiB stack. Hosting under IIS (`w3wp.exe`) is unchecked. On macOS extraction runs on a fixed 1 MiB native worker thread, whatever the caller's stack.
 - **No declared dependencies.** Both assets use the `System.Text.Json` in box with their target
   framework; a consumer that wants a particular patch level references it itself.
 
 ## Development
 
-Building, testing, benchmarking and what CI runs are in [`docs/development.md`](docs/development.md);
+Building, testing, benchmarking and what CI runs are in [`docs/development.md`](https://github.com/vinhch/rust-trafilatura-dotnet/blob/main/docs/development.md);
 cutting a release, from the version bump to the NuGet publish, is in
-[`docs/releasing.md`](docs/releasing.md).
+[`docs/releasing.md`](https://github.com/vinhch/rust-trafilatura-dotnet/blob/main/docs/releasing.md).
+What changed between releases is in [`CHANGELOG.md`](https://github.com/vinhch/rust-trafilatura-dotnet/blob/main/CHANGELOG.md).
 
 ## Credits
 
 - [adbar/trafilatura](https://github.com/adbar/trafilatura) defines the extraction this package follows.
-- [rust-trafilatura](https://github.com/markusmobius/rust-trafilatura) is the crate this package binds.
+- [trafilatura-rust](https://crates.io/crates/trafilatura-rust) is the crate this package binds.
 
 ## License
 
-`MIT AND Apache-2.0`: MIT for this repository's source, Apache-2.0 for the bundled native core. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the core's notice and licence text.
+`MIT AND Apache-2.0`: MIT for this repository's source, Apache-2.0 for the bundled native core. See [THIRD-PARTY-NOTICES.md](https://github.com/vinhch/rust-trafilatura-dotnet/blob/main/THIRD-PARTY-NOTICES.md) for the core's notice and licence text.
