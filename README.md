@@ -1,4 +1,4 @@
-Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none. With `IncludeImages`, a value the core cannot join gives `InvalidValue` |# RustTrafilatura DotNet ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/rust-trafilatura-dotnet/ci.yml?branch=main) [![Nuget](https://img.shields.io/nuget/v/RustTrafilatura?maxAge=3600)](https://www.nuget.org/packages/RustTrafilatura/)
+# RustTrafilatura DotNet ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/rust-trafilatura-dotnet/ci.yml?branch=main) [![Nuget](https://img.shields.io/nuget/v/RustTrafilatura?maxAge=3600)](https://www.nuget.org/packages/RustTrafilatura/)
 
 .NET binding for [`trafilatura-rust`](https://crates.io/crates/trafilatura-rust), the crate linked into a native library per RID and called in
 process over a length-delimited C ABI. Extraction is the crate's; this package supplies the ABI, the
@@ -68,7 +68,7 @@ native library applies its own default rather than a value this package invented
 | Option | Default | Effect |
 | --- | --- | --- |
 | `ResponseFields` | text, comments and metadata | Which of `contentText`, `commentsText` and `metadata` to return. A field that is not named is null in the response and in the result |
-| `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry. Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none |
+| `Url` | null | The URL the page was fetched from. Used for metadata the document cannot carry. Any string is accepted; one that is not an absolute URL is ignored, and an empty string means none. With `IncludeImages`, a value the core cannot join gives `InvalidValue` |
 | `TargetLanguage` | null | The language to expect. Null expects nothing |
 | `Focus` | `Balanced` | How much of the page to keep, out of `Balanced`, `FavorRecall` and `FavorPrecision` |
 | `ExcludeComments` | false | Whether to drop the page's comments |

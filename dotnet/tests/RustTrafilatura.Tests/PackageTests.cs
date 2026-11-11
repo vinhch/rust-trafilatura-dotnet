@@ -100,6 +100,21 @@ public sealed class PackageTests
         }
     }
 
+    /// <summary>The packed README opens with its H1, so the package page renders a title.</summary>
+    [Fact]
+    public void Packed_Readme_Starts_With_Its_Title()
+    {
+        var root = Repository.Root();
+        var package = PackagePath(root);
+        Assert.True(
+            File.Exists(package),
+            $"The package to check is not at {package}. Run pwsh -File scripts/release.ps1 (or bash scripts/release.sh), which packs it and then runs this check.");
+
+        using var archive = ZipFile.OpenRead(package);
+        using var reader = new StreamReader(archive.GetEntry("README.md")!.Open());
+        Assert.StartsWith("# RustTrafilatura", reader.ReadLine());
+    }
+
     /// <summary>
     /// The package's licence metadata states MIT AND Apache-2.0 by expression rather than by a licence file:
     /// MIT for this repository's code, Apache-2.0 for the bundled native core. A consumer's tooling reads
