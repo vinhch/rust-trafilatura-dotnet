@@ -24,12 +24,12 @@ internal static unsafe partial class ThreadStack
 
         if (OperatingSystem.IsLinux())
         {
-            return LinuxStackSize();
+            return LinuxNative.StackSize();
         }
 
         if (OperatingSystem.IsMacOS())
         {
-            return (long)pthread_get_stacksize_np(pthread_self());
+            return MacNative.StackSize();
         }
 
         throw new NotSupportedException("the thread stack size is read on Windows, Linux and macOS only");
@@ -38,46 +38,58 @@ internal static unsafe partial class ThreadStack
     [LibraryImport("kernel32.dll")]
     private static partial void GetCurrentThreadStackLimits(out nuint low, out nuint high);
 
-    [LibraryImport("libc")]
-    private static partial nuint pthread_self();
-
-    [LibraryImport("libc")]
-    private static partial nuint pthread_get_stacksize_np(nuint thread);
-
-    [LibraryImport("libc")]
-    private static partial int pthread_getattr_np(nuint thread, byte* attr);
-
-    [LibraryImport("libc")]
-    private static partial int pthread_attr_getstack(byte* attr, nint* stackAddress, nuint* stackSize);
-
-    [LibraryImport("libc")]
-    private static partial int pthread_attr_destroy(byte* attr);
-
-    /// <summary>glibc reports a thread's stack through a <c>pthread_attr_t</c>; the 128-byte buffer is at least its size on aarch64.</summary>
-    private static long LinuxStackSize()
+    /// <summary>glibc, loaded by its soft name: the bare "libc" name does not resolve on Linux.</summary>
+    private static unsafe partial class LinuxNative
     {
-        byte* attr = stackalloc byte[128];
-        int code = pthread_getattr_np(pthread_self(), attr);
-        if (code != 0)
-        {
-            throw new InvalidOperationException($"pthread_getattr_np failed with {code}");
-        }
+        [LibraryImport("libc.so.6")]
+        private static partial nuint pthread_self();
 
-        try
+        [LibraryImport("libc.so.6")]
+        private static partial int pthread_getattr_np(nuint thread, byte* attr);
+
+        [LibraryImport("libc.so.6")]
+        private static partial int pthread_attr_getstack(byte* attr, nint* stackAddress, nuint* stackSize);
+
+        [LibraryImport("libc.so.6")]
+        private static partial int pthread_attr_destroy(byte* attr);
+
+        /// <summary>glibc reports a thread's stack through a <c>pthread_attr_t</c>; the 128-byte buffer is at least its size on aarch64.</summary>
+        internal static long StackSize()
         {
-            nint stackAddress = 0;
-            nuint stackSize = 0;
-            code = pthread_attr_getstack(attr, &stackAddress, &stackSize);
+            byte* attr = stackalloc byte[128];
+            int code = pthread_getattr_np(pthread_self(), attr);
             if (code != 0)
             {
-                throw new InvalidOperationException($"pthread_attr_getstack failed with {code}");
+                throw new InvalidOperationException($"pthread_getattr_np failed with {code}");
             }
 
-            return (long)stackSize;
+            try
+            {
+                nint stackAddress = 0;
+                nuint stackSize = 0;
+                code = pthread_attr_getstack(attr, &stackAddress, &stackSize);
+                if (code != 0)
+                {
+                    throw new InvalidOperationException($"pthread_attr_getstack failed with {code}");
+                }
+
+                return (long)stackSize;
+            }
+            finally
+            {
+                pthread_attr_destroy(attr);
+            }
         }
-        finally
-        {
-            pthread_attr_destroy(attr);
-        }
+    }
+
+    private static partial class MacNative
+    {
+        [LibraryImport("libc")]
+        private static partial nuint pthread_self();
+
+        [LibraryImport("libc")]
+        private static partial nuint pthread_get_stacksize_np(nuint thread);
+
+        internal static long StackSize() => (long)pthread_get_stacksize_np(pthread_self());
     }
 }

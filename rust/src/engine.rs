@@ -7,7 +7,9 @@
 
 use crate::contract::{self, ConfigJson, Request, ResponseField, SCHEMA_VERSION};
 use serde::Serialize;
-use trafilatura_rust::{Call, Config, Document, ExtractError, Focus, Input, Options};
+use trafilatura_rust::{
+    Call, Config, Document, ExtractError, Focus, Input, InputLimit, Options, Rejection,
+};
 
 /// The response `metadata` object: the metadata fields of the core [`Document`] under their wire
 /// names. A field the page does not carry is an empty string, except `date`.
@@ -77,6 +79,17 @@ pub fn build(request: &Request, payload: Payload<'_>, max_input_bytes: Option<us
         input = input.url(url);
     }
     assemble(request, extractor.bare_extraction(&input, &Call::default()))
+}
+
+/// The response for a payload over the input cap. It is assembled from the core's own
+/// `InputTooLarge` error, so the envelope is the one the core writes; the payload is never read.
+pub fn too_large(request: &Request) -> Response {
+    assemble(
+        request,
+        Err(ExtractError::Rejected(Rejection::InputTooLarge(
+            InputLimit::MaxInputBytes,
+        ))),
+    )
 }
 
 /// Fills in the requested fields of a response from the core's document, or the error envelope.

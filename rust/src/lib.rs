@@ -10,7 +10,7 @@
 //! reconstruction in `rt_free` and the `catch_unwind` boundary. A caller opens an `unsafe` block at
 //! the call site, because an `unsafe extern "C"` function cannot be called from safe code. Each
 //! export validates its out-parameters, and `rt_extract` validates its header size, before reading or
-//! writing anything; the core checks the payload size before it reads the payload. Each export runs
+//! writing anything; the payload size is checked before the payload is read. Each export runs
 //! its body behind a panic boundary, so a panic becomes return code 3 with a `Panic` envelope instead
 //! of unwinding into the host process.
 //!
@@ -89,9 +89,10 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 ///
 /// The null-pointer checks come first: a null pointer beside a non-zero length is an
 /// `InvalidRequest`. The header is then checked against its cap before it is parsed, so a header
-/// above 1 MiB is an `InvalidRequest` too, and so is a header the contract rejects. The core checks
-/// the payload against its own cap before it reads the payload: a payload above 64 MiB is an
-/// `InputTooLarge` extraction error (code `1`). A buffer exactly at its cap is accepted.
+/// above 1 MiB is an `InvalidRequest` too, and so is a header the contract rejects. The payload is
+/// checked against the same cap before it is read, whatever its encoding: a payload above 64 MiB is an
+/// `InputTooLarge` extraction error (code `1`), and the core applies the cap again. A buffer exactly at
+/// its cap is accepted.
 /// `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES` override the caps; each
 /// is read once, so a value set after the first call has no effect, and `0` disables the cap it
 /// names.
@@ -244,7 +245,12 @@ fn run_extract(
         Ok(request) => request,
         Err(error) => return request_error(error),
     };
-    // SAFETY: as above, and the payload buffer is only read once the header was accepted.
+    // The cap is checked before the payload is viewed, so an oversized payload is refused whatever its
+    // encoding: a text payload is not validated as UTF-8 first.
+    if max_input_bytes().is_some_and(|max| payload_len > max) {
+        return (CODE_EXTRACTION_ERROR, encode(&engine::too_large(&request)));
+    }
+    // SAFETY: as above, and the payload buffer is only viewed once the header was accepted and the cap passed.
     let payload = unsafe { bytes(payload, payload_len) };
     let payload = match contract::payload(&request.header, payload) {
         Ok(payload) => payload,
@@ -266,7 +272,7 @@ fn run_extract(
 /// Neither pointer is dereferenced here, and each problem is reported in the order it is found: a
 /// null pointer beside a non-zero length, then the header cap. The cap is compared with `>`, so a
 /// header exactly at its cap is accepted, and a cap of `0` is disabled. The payload has no check
-/// here: the core applies the payload cap, from [`max_input_bytes`], once the header is parsed.
+/// here: `run_extract` checks it after the header is parsed, and the core applies the same cap.
 fn check_input(
     header: *const u8,
     header_len: usize,

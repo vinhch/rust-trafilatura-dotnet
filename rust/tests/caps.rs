@@ -30,9 +30,8 @@ fn article_of_len(len: usize) -> Vec<u8> {
     payload
 }
 
-/// Calls `rt_extract` and reads the returned buffer as JSON.
-fn call(payload: &[u8]) -> (i32, Option<Value>) {
-    let header = br#"{"responseFields":["contentText"]}"#;
+/// Calls `rt_extract` with `header` and reads the returned buffer as JSON.
+fn call_with(header: &[u8], payload: &[u8]) -> (i32, Option<Value>) {
     let (mut out, mut len, mut cap) = (std::ptr::null_mut(), 0usize, 0usize);
     let code = unsafe {
         rt_extract(
@@ -56,20 +55,51 @@ fn call(payload: &[u8]) -> (i32, Option<Value>) {
     )
 }
 
+/// Calls `rt_extract` with the default header and reads the returned buffer as JSON.
+fn call(payload: &[u8]) -> (i32, Option<Value>) {
+    call_with(br#"{"responseFields":["contentText"]}"#, payload)
+}
+
+/// The header that sends the payload as text, which is the path the UTF-8 check runs on.
+const TEXT_HEADER: &[u8] = br#"{"payloadText":true,"responseFields":["contentText"]}"#;
+
+/// Asserts the envelope of a payload over the cap: code 1, the core's `InputTooLarge` kind and its limit.
+fn assert_input_too_large(code: i32, json: Option<Value>) {
+    assert_eq!(
+        code, 1,
+        "a payload over the cap is an extraction error: {json:?}"
+    );
+    let json = json.expect("code 1 writes an extraction envelope");
+    assert_eq!(json["schemaVersion"], 2);
+    assert_eq!(json["error"]["kind"], "InputTooLarge");
+    assert_eq!(json["error"]["context"]["limit"], "maxInputBytes");
+}
+
+#[test]
+fn text_payload_over_cap_is_input_too_large_before_utf8_is_checked() {
+    std::env::set_var(PAYLOAD_CAP_ENV, CAP.to_string());
+
+    // Not UTF-8: a UTF-8 check that ran first would answer InvalidRequest instead of the cap's error.
+    let invalid_utf8 = vec![0xff; CAP + 1];
+    let (code, json) = call_with(TEXT_HEADER, &invalid_utf8);
+    assert_input_too_large(code, json);
+}
+
+#[test]
+fn text_payload_over_cap_is_input_too_large() {
+    std::env::set_var(PAYLOAD_CAP_ENV, CAP.to_string());
+
+    let (code, json) = call_with(TEXT_HEADER, &article_of_len(CAP + 1));
+    assert_input_too_large(code, json);
+}
+
 #[test]
 fn payload_over_cap_is_input_too_large() {
     std::env::set_var(PAYLOAD_CAP_ENV, CAP.to_string());
 
     let one_over = article_of_len(CAP + 1);
     let (code, json) = call(&one_over);
-    assert_eq!(
-        code, 1,
-        "one byte over the cap is a core rejection: {json:?}"
-    );
-    let json = json.expect("code 1 writes an extraction envelope");
-    assert_eq!(json["schemaVersion"], 2);
-    assert_eq!(json["error"]["kind"], "InputTooLarge");
-    assert_eq!(json["error"]["context"]["limit"], "maxInputBytes");
+    assert_input_too_large(code, json);
 }
 
 #[test]
