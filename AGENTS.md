@@ -7,8 +7,7 @@ managed surface. A change is correct when the managed result equals what the cor
 same input and options, the contract stays versioned, and nothing escapes the boundary: a panic never
 unwinds into the host (`rt_extract` and `rt_version` return the panic code with a `Panic` envelope,
 `rt_cancel_new` returns null, and `rt_free`, `rt_cancel` and `rt_cancel_free` swallow it) and nothing is
-written to stderr. A migration to a new core is in progress; [docs/phase-plan.md](docs/phase-plan.md)
-says what ships next.
+written to stderr. [docs/phase-plan.md](docs/phase-plan.md) says what ships next.
 
 ## Documents and keeping them true
 
