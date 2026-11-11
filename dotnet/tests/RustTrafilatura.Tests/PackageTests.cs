@@ -101,8 +101,9 @@ public sealed class PackageTests
     }
 
     /// <summary>
-    /// The package's licence metadata states MIT by expression rather than by a licence file, so a
-    /// consumer's tooling reads an SPDX id instead of free text.
+    /// The package's licence metadata states MIT AND Apache-2.0 by expression rather than by a licence file:
+    /// MIT for this repository's code, Apache-2.0 for the bundled native core. A consumer's tooling reads
+    /// SPDX ids instead of free text and sees the NOTICE duty.
     /// </summary>
     /// <remarks>
     /// The expression is read from the <c>.nuspec</c> inside the archive rather than from the project
@@ -110,7 +111,7 @@ public sealed class PackageTests
     /// reads. A project-level assertion would still pass if the entry never reached the package.
     /// </remarks>
     [Fact]
-    public void Package_Declares_License_As_Mit_Expression()
+    public void Package_Declares_License_As_Mit_And_Apache_Expression()
     {
         var root = Repository.Root();
         var package = PackagePath(root);
@@ -134,16 +135,15 @@ public sealed class PackageTests
             RegexOptions.IgnoreCase);
         Assert.True(
             expression.Success,
-            $"The .nuspec declares no licence expression. Apache-2.0 AND BSD-3-Clause was the expression this package used before this repository's own code became MIT; a package that states neither dropped the metadata. The <license> element is: {Regex.Match(nuspec, @"<license[^>]*>[^<]*</license>", RegexOptions.Singleline).Value}");
+            $"The .nuspec declares no licence expression, so the packed metadata dropped it. The <license> element is: {Regex.Match(nuspec, @"<license[^>]*>[^<]*</license>", RegexOptions.Singleline).Value}");
 
-        Assert.Equal("MIT", expression.Groups["id"].Value.Trim());
+        Assert.Equal("MIT AND Apache-2.0", expression.Groups["id"].Value.Trim());
 
-        // NuGet writes a <licenseUrl> beside every expression, derived from the SPDX id; that is its
+        // NuGet writes a <licenseUrl> beside every expression, derived from the SPDX ids; that is its
         // own compatibility element, not a fallback this project chose. What must not appear is a
         // licence *file* reference, because that would mean the expression is gone and the terms are
         // back to free text with no SPDX id for a consumer's tooling to read.
         Assert.DoesNotContain(@"type=""file""", nuspec, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Apache-2.0", nuspec, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("BSD-3-Clause", nuspec, StringComparison.OrdinalIgnoreCase);
     }
 

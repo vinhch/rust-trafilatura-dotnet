@@ -297,4 +297,4 @@ cutting a release, from the version bump to the NuGet publish, is in
 
 ## License
 
-MIT
+`MIT AND Apache-2.0`: MIT for this repository's source, Apache-2.0 for the bundled native core. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the core's notice and licence text.

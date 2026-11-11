@@ -3,9 +3,9 @@ name = "rust-trafilatura-ffi"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.98.1"
-# This repository's own source is MIT. The crate links the released core crate, which is
-# `Apache-2.0` only, so this field states the license of this repository's own code; the dependency
-# graph's expressions are the allow-list in deny.toml rather than part of this declaration.
+# This field states the license of this repository's own code, which is MIT. The bundled core crate is
+# `Apache-2.0` only and the package expression is `MIT AND Apache-2.0`; the dependency graph's
+# expressions are the allow-list in deny.toml rather than part of this declaration.
 license = "MIT"
 publish = false
 

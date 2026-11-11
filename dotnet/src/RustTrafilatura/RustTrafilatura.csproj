@@ -4,8 +4,8 @@
     <PackageId>RustTrafilatura</PackageId>
     <Version>0.2.0</Version>
     <Authors>vinhch</Authors>
-    <Description>In-process HTML text and metadata extraction for .NET, over the published rust-trafilatura crate and a length-delimited C ABI.</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Description>In-process HTML text and metadata extraction for .NET, over the published trafilatura-rust crate and a length-delimited C ABI.</Description>
+    <PackageLicenseExpression>MIT AND Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/vinhch/rust-trafilatura-dotnet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/vinhch/rust-trafilatura-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -62,7 +62,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The README, the MIT LICENSE and the third-party notices, all at the package root. They live at the repository
+    <!-- The README, this repository's MIT LICENSE and the third-party notices, all at the package root. They live at the repository
          root, three levels above this project, and are named by absolute path because NuGet resolves a
          package entry's Include against the package output directory, not against this project. -->
     <None Include="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '../../../README.md'))" Pack="true" PackagePath="/" />
