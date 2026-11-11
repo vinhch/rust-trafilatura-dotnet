@@ -52,3 +52,10 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 4 |
 | F-11 | The macOS .NET 8 stack value (512 KiB) comes from the libpthread main branch, not a release build. Confirm it before the phase 4 README states it. | Phase 4 |
 | F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
+| F-13 | ABI and schema stay at 2 although the `rt_extract` signature changed in phase 3, and the phase 3 design keeps both at 2 for the release. Decide the bump before the release; a stale ABI-2 library passes the contract check. | Phase 4 |
+| F-14 | The null-handle branch of `CancelHandle.Create()` has no test: it needs the native `rt_cancel_new` to fail. Add the test once the native side can be forced to fail. | No trigger yet |
+| F-15 | The cross-thread native cancel test and the managed latency test depend on timing. The latency floor is 200 ms; the development host measured 384 ms. Revisit both on the first CI run; the cross-thread test takes 8 to 16 s in debug. | Phase 4 (CI) |
+| F-16 | The `docs` job and the AOT publish job in `.github/workflows/_ci.yml` have not run on GitHub Actions; the branch is local. Check both on the first push. | Before merge |
+| F-17 | `Failures.Read` throws `InvalidOperationException` when the response root is a JSON array. Make it a clear error for a malformed response. Predates phase 3. | No trigger yet |
+| F-18 | `scripts/docs-check.ps1` walks up from each `git.exe` to the first `bin\bash.exe`, which can find an unrelated `bash.exe` above a shim install. Bound the search to the install's own `bin`. | No trigger yet |
+| F-19 | The Windows AOT publish fails from a Bash shell with MSB3073 (vswhere) unless the Visual Studio Installer folder is on PATH. Note the prerequisite in `docs/development.md`. | Phase 4 |

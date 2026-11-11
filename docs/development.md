@@ -28,11 +28,11 @@ them prints its flags.
 | --- | --- | --- |
 | `scripts/build.sh` | Builds the native library for one RID and stages it, with a build stamp, under `dotnet/src/RustTrafilatura/runtimes/` | `--rid <rid>` (default: host RID), `--check` (verify the staged library against its stamp, build nothing) |
 | `scripts/test.sh` | Verifies the staged library, then runs fmt, clippy, both nextest passes, the doc tests, the .NET build and one .NET test run per target framework | `--report` (JUnit files under `artifacts/test-results/`, the directory the CI report step publishes) |
-| `scripts/bench.sh` | Runs `rust/benches/roundtrip.rs` and fails when the round-trip ratio against a direct core call exceeds its budget, then runs `dotnet/tools/AllocProbe/` | none |
+| `scripts/bench.sh` | Runs `rust/benches/roundtrip.rs` and fails when the round-trip ratio against a direct core call exceeds its budget, then runs `dotnet/tools/AllocProbe/` | `-h`, `--help` |
 | `scripts/corpus.sh` | Fetches the pinned benchmark corpus into the gitignored `dotnet/benchmarks/corpus/` | `--check` (verify instead of fetch) |
 | `scripts/version.sh` | Keeps the crate version, the lockfile entry and the package version one number | `--set <version>` (refuses dirty files; neither commits nor tags), `--check [--tag v<version>]` |
 | `scripts/release.sh` | Packs `artifacts/RustTrafilatura.<version>.nupkg` and runs the package tests against it | `--allow-partial` (pack only the staged RIDs), `--push-only` (publish the package already in `artifacts/`; used by `.github/workflows/publish.yml`) |
-| `scripts/docs-check.sh` | Checks the repo paths and relative Markdown links that the "Docs check" section names, and prints one line per broken pointer | none |
+| `scripts/docs-check.sh` | Checks the repo paths and relative Markdown links that the "Docs check" section names, and prints one line per broken pointer | `-h`, `--help` |
 
 Typical order: `scripts/build.sh`, then `scripts/test.sh`. `scripts/release.sh` requires all five
 RIDs to be staged unless given `--allow-partial`, and refuses a staged library that exports a
