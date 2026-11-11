@@ -20,22 +20,20 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 2 | 2. Engine swap and error mapping on the 0.2.0 code (pinned git rev): `bare_extraction` with `Format::Python`, option and result mapping, `Metadata.Date` as `string`, `payloadText` header key for `ExtractFromHtml`, payload cap through `Options::max_input_bytes`, one kind per `Rejection` variant with `ContextJson` from the 0.2.0 payloads, worker thread and stack env var removed, 768 KiB Rust and 1 MiB .NET stack tests, core version read under the new crate name, bench against a direct crate call | Not started | Full suites green; no old-core reference in `rust/` (`rust-trafilatura` dependency, `rust_trafilatura::`, `rust_htmldate`; the binding's own `rust-trafilatura-ffi` stays); a test per mapping row family and per reachable error kind, including `InputTooLarge` for the raw cap and for a gzip stream past the decompressed cap | OI-1 |
 | 3 | 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | Not started | Full suites green; a cancel mid-extraction throws in under a quarter of the uncancelled run; a pre-cancelled token throws without a native call; a cancel between `rt_extract` returning and the registration dispose returns the normal result; the managed `SafeHandle` live count is zero after single and concurrent runs | 2 |
-| 4 | 4. Release: `trafilatura-rust = "=0.2.0"` from crates.io, CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed | 2, 3, OI-2 |
+| 4 | 4. Release: CI (`quality.yml` core-untouched job removed), `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | Not started | Tests green on Linux and Windows; package published; lapsed `.work/issue-*.md` drafts removed; release notes list the date format, `HtmlDateMode.Default`, the `max_nodes` rejection, empty input as `MissingDocument`, `Metadata.Language` always empty until crate OI-4, and extraction on a fixed 1 MiB worker thread on macOS (the caller's thread elsewhere); `cargo deny check` warns about three unused allowances in `rust/deny.toml` (lines 15, 17, 19), remove them | 2, 3 |
 
 ### Shipped phases
 
 | Phase | Shipped in |
 | --- | --- |
 | 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `3d8960b..e004856` and the phase-closing commit |
+| 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `20645fc..c0b8b41` and the phase-closing commit |
 
 ## Open items register
 
 | Id | Item | Needed by |
 | --- | --- | --- |
-| OI-1 | trafilatura-rust 0.2.0 code on its `main`: `Rejection` payloads (`MissingFields`, `TooShort` counts, `TreeLimit`, `InputLimit`), `InputTooLarge(MaxFileSize)` for oversized gzip and zstd input (brotli and zlib stay on upstream's path), the 512 KiB stack contract in the crate docs. The owner accepted all items and announces the release. | Phase 2 |
-| OI-2 | trafilatura-rust 0.2.0 published on crates.io. | Phase 4 |
 | OI-3 | Consumer change in `content-search-connectors` (handoff section 8): thread the engine token through, drop the cap code and hook, re-run the quality sample before `Extraction:Engine` is set to `Trafilatura`. Runs in that repo. | After phase 4 |
 
 ## Followups
