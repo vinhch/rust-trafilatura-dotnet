@@ -135,7 +135,7 @@ Note: a member the request did not name is null; one it named that the page has 
 | `HtmlLanguage` | the page's own declared language does not match `TargetLanguage` | |
 | `WrongLanguage` | not raised until the core reports a language: only the `<html lang>` check applies | |
 | `MissingMetadata` | `HasEssentialMetadata` is set and a piece is missing | `missing`: the names of the missing pieces |
-| `OutputTreeTooLong` | the extracted tree exceeds a limit | `limit`: `maxTreeSize`, `maxNodes`, `tagAttributes` or `tableCells`; `children` as well for `maxTreeSize` |
+| `OutputTreeTooLong` | the extracted tree exceeds a limit | `limit`: `maxTreeSize`, `maxNodes`, `tagAttributes`, `tableCells` or `unknown`; `children` as well for `maxTreeSize` |
 | `OutputTooShort` | the extracted text is under the `Config` thresholds | `textChars`, `commentsChars` |
 | `InputTooLarge` | the payload or a document limit is exceeded | `limit`: `maxInputBytes`, `maxFileSize`, `jsonSize` or `unknown` |
 | `DuplicateBody` | not raised: deduplication is off and no option turns it on | |
