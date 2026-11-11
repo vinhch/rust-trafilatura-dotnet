@@ -114,7 +114,6 @@ public static class Extractor
     /// <param name="cancellationToken">
     /// Stops the extraction when cancelled, with the same meaning as on <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/>.
     /// </param>
-
     /// <exception cref="OperationCanceledException">The token was cancelled before the call or during it. Carries <paramref name="cancellationToken"/>.</exception>
     /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/> makes, run here before the call.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>

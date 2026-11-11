@@ -43,13 +43,14 @@ internal sealed class CancelHandle : SafeHandle
 
     public override bool IsInvalid => handle == IntPtr.Zero;
 
-    /// <summary>Creates a native token and counts it, or returns <see cref="None"/> when the native side returns null.</summary>
+    /// <summary>Creates a native token and counts it.</summary>
+    /// <exception cref="InvalidOperationException">The native side returned null, so no token exists and the call cannot be cancelled.</exception>
     internal static CancelHandle Create()
     {
         var created = Interop.RtCancelNew();
         if (created.IsInvalid)
         {
-            return None;
+            throw new InvalidOperationException("The native library could not create a cancel handle.");
         }
 
         Interlocked.Increment(ref _createdCount);
