@@ -61,6 +61,7 @@ public static class Extractor
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
+    /// <exception cref="InvalidOperationException">The native library could not create a cancel handle, so nothing was extracted.</exception>
     public static ExtractionResult ExtractFromBytes(ReadOnlyMemory<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
         return ExtractFromSpan(html.Span, options, cancellationToken);
@@ -95,6 +96,7 @@ public static class Extractor
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
+    /// <exception cref="InvalidOperationException">The native library could not create a cancel handle, so nothing was extracted.</exception>
     public static ExtractionResult ExtractFromSpan(ReadOnlySpan<byte> html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -114,12 +116,14 @@ public static class Extractor
     /// <param name="cancellationToken">
     /// Stops the extraction when cancelled, with the same meaning as on <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/>.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the call or during it. Carries <paramref name="cancellationToken"/>.</exception>
     /// <exception cref="ContractVersionMismatchException">The same check <see cref="ExtractFromSpan(ReadOnlySpan{byte}, ExtractionOptions, CancellationToken)"/> makes, run here before the call.</exception>
     /// <exception cref="TrafilaturaException">The request was rejected or the extraction failed.</exception>
     /// <exception cref="DllNotFoundException">The native library is missing, so the host could not load it.</exception>
     /// <exception cref="EntryPointNotFoundException">The library that loaded is stale or foreign and does not export this ABI.</exception>
     /// <exception cref="OverflowException">The response is larger than the platform's `int` limit, so it cannot be marshalled at all.</exception>
+    /// <exception cref="InvalidOperationException">The native library could not create a cancel handle, so nothing was extracted.</exception>
     public static ExtractionResult ExtractFromHtml(string html, ExtractionOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(html);

@@ -80,7 +80,7 @@ caller passes that exact triple to `rust/src/lib.rs::rt_free` once; a null point
 a second release of a live pointer is undefined behaviour. The managed side never keeps a reference
 to the native buffer past the read.
 
-The cancel handle is the one native pointer that outlives a call. `dotnet/src/RustTrafilatura/CancelHandle.cs::CancelHandle`
+The cancel handle lives for one extract call, from `rust/src/lib.rs::rt_cancel_new` to `rust/src/lib.rs::rt_cancel_free`. `dotnet/src/RustTrafilatura/CancelHandle.cs::CancelHandle`
 is a `SafeHandle` that releases it with `rust/src/lib.rs::rt_cancel_free`. The call disposes the token's
 registration first and the handle second, so a cancel that arrives during the return finds a registration
 that is gone and never a released handle. A call whose token cannot be cancelled passes a null handle and

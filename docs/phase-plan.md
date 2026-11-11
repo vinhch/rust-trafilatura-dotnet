@@ -28,7 +28,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 | --- | --- |
 | 1. Removals on the old core: worker cap and time budget, `ExtractMany`, the dropped options and result fields, `InvalidUrl`; ABI and schema version 2 | `3d8960b..e004856` and the phase-closing commit |
 | 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `b0eb0e4..c0b8b41` and the phase-closing commit |
-| 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | `5854c3d..7abf8fb` and the phase-closing commit |
+| 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | `74c968d..7abf8fb` and the phase-closing commit |
 
 ## Open items register
 

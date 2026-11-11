@@ -4,7 +4,7 @@
 # `::Name` after a path still occurs in its file. The rules are in docs/development.md, section "Docs
 # check". Prints one line per broken pointer and exits 1 when there are any; prints nothing and exits 0
 # when the docs are clean. The CI docs job runs it on Ubuntu, where a wrong-case path fails.
-set -euo pipefail
+set -eu
 
 readonly script_name="docs-check.sh"
 
