@@ -90,9 +90,9 @@ static LIVE_BUFFERS: AtomicUsize = AtomicUsize::new(0);
 /// The null-pointer checks come first: a null pointer beside a non-zero length is an
 /// `InvalidRequest`. The header is then checked against its cap before it is parsed, so a header
 /// above 1 MiB is an `InvalidRequest` too, and so is a header the contract rejects. The payload is
-/// checked against its cap (64 MiB by default) before it is read, whatever its encoding: a payload above that
-/// cap is an `InputTooLarge` extraction error (code `1`), and the core applies the cap again. A buffer exactly at
-/// its cap is accepted.
+/// checked against its cap (64 MiB by default) before it is read, whatever its encoding: a payload
+/// above that cap is an `InputTooLarge` extraction error (code `1`), and the core applies the cap
+/// again. A buffer exactly at its cap is accepted.
 /// `RUSTTRAFILATURA_MAX_PAYLOAD_BYTES` and `RUSTTRAFILATURA_MAX_HEADER_BYTES` override the caps; each
 /// is read once, so a value set after the first call has no effect, and `0` disables the cap it
 /// names.

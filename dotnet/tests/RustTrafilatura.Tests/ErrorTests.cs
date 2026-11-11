@@ -10,7 +10,7 @@ namespace RustTrafilatura.Tests;
 /// </summary>
 public sealed class ErrorTests
 {
-    /// <summary>A `Url` that is not an absolute URL is passed through: the core ignores a value it cannot parse.</summary>
+    /// <summary>A `Url` that is not an absolute URL is passed through: without `IncludeImages` the core does not use it to join anything.</summary>
     [Fact]
     public void Non_Url_Value_Extracts()
     {

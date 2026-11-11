@@ -92,8 +92,8 @@ public static class Extractor
 
     /// <summary>
     /// Extracts from a page the caller already holds as a string. The string is encoded to UTF-8 and sent
-    /// to the native library as text (`payloadText`), so no binary check, decompression or charset
-    /// detection runs on it, which the byte entry points do. An unpaired surrogate in
+    /// to the native library as text (`payloadText`). No binary check, decompression or charset
+    /// detection runs on it; the byte entry points run all three. An unpaired surrogate in
     /// <paramref name="html"/> becomes U+FFFD before the call.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="html"/> is null.</exception>

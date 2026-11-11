@@ -41,7 +41,7 @@ const DEFAULT_RESPONSE_FIELDS: [ResponseField; 3] = [
 
 /// The request header, schema version 2.
 ///
-/// `url` lives here rather than in `options`; every other option is a field
+/// `url` and `payloadText` live here rather than in `options`; every other option is a field
 /// of [`OptionsJson`]. Unknown keys are rejected at every level.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]

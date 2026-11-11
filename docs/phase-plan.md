@@ -48,3 +48,9 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-4 | Comments HTML: the crate records it as its F-80. | trafilatura-rust F-80 |
 | F-5 | Run the docs check from `docs/development.md` in CI on Ubuntu, so a broken pointer fails the pull request instead of relying on the closing agent, and a wrong-case path fails as it would on Linux. | Phase 2 |
 | F-6 | README links into `docs/` are relative and break on the nuget.org package page; use absolute GitHub URLs for them. | Phase 4 |
+| F-7 | `DuplicateBody` is unreachable from `bare_extraction`: duplicate detection needs a `DedupCache` the binding does not pass. | A consumer asks for cross-call dedup |
+| F-8 | The macOS worker (`extraction_stack()`) and the macOS skip of `Default_And_Thread_Pool_Stacks_Are_At_Least_One_MiB` run on no CI host. Add a macOS job, or a test that runs the selected stack on every OS. | Phase 4 |
+| F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 4 |
+| F-10 | `contract.rs` imports `engine::Payload` and `engine` imports `contract`. Move `Payload` into a module both can import. | Phase 3 (edits `contract.rs`) |
+| F-11 | The macOS .NET 8 stack value (512 KiB) comes from the libpthread main branch, not a release build. Confirm it before the phase 4 README states it. | Phase 4 |
+| F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
