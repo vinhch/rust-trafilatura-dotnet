@@ -1,5 +1,5 @@
 # Run scripts/docs-check.sh with bash and exit with its code. On Windows the bash is Git for Windows' bin/bash.exe,
-# found from the git executable: a bare bash can resolve to WSL's System32\bash.exe.
+# found from `git --exec-path` of each git on PATH: a bare bash can resolve to WSL's System32\bash.exe.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -20,22 +20,30 @@ if ($args.Count -gt 0) {
 $Script = Join-Path $PSScriptRoot 'docs-check.sh'
 
 if ($IsWindows) {
-    # Each git.exe's directory and its ancestors are searched for bin\bash.exe: git.exe sits in cmd\ or
-    # mingw64\bin\ of the same install, and both lead to its root.
+    # Git for Windows' root is three levels above `git --exec-path` (<root>\<mingw64|ucrt64|clangarm64>\libexec\git-core),
+    # so a shim or a launcher in cmd\ leads to the same root. A git that fails or prints nothing is skipped, and so is
+    # one whose root holds no bin\bash.exe (MSYS2 and Cygwin report /usr/lib/git-core).
     $gitPaths = @(Get-Command git -CommandType Application -All | ForEach-Object { $_.Source })
     if ($gitPaths.Count -eq 0) { throw "$ScriptName`: git not found on PATH, so Git for Windows bash.exe cannot be located" }
     $bash = $null
+    $tried = @()
     foreach ($gitPath in $gitPaths) {
-        $dir = Split-Path -Parent $gitPath
-        while ($dir -and -not $bash) {
-            $candidate = Join-Path $dir 'bin\bash.exe'
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $bash = $candidate }
-            $dir = Split-Path -Parent $dir
+        $LASTEXITCODE = 0
+        try { $execPath = (& $gitPath --exec-path 2>$null | Select-Object -First 1) } catch { $execPath = $null }
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($execPath)) {
+            $tried += "$gitPath -> failed"
+            continue
         }
-        if ($bash) { break }
+        $tried += "$gitPath -> $execPath"
+        $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $execPath))
+        $candidate = Join-Path $root 'bin\bash.exe'
+        if ($root -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            $bash = $candidate
+            break
+        }
     }
     if (-not $bash) {
-        throw "$ScriptName`: Git for Windows bash.exe not found: expected <Git>\bin\bash.exe, searched upward from $($gitPaths -join ', ')"
+        throw "$ScriptName`: Git for Windows bash.exe not found: expected <Git>\bin\bash.exe above git --exec-path, tried $($tried -join '; ')"
     }
 }
 else {
