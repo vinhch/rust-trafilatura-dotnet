@@ -29,25 +29,25 @@ public sealed class BytesTests
         Fixtures.Article.CopyTo(stacked);
         try
         {
-            var expected = AssertAllFields(Extractor.ExtractFromBytes(Fixtures.Article, AllFields));
+            var expected = AssertAllFields(Extractor.ExtractFromBytes(Fixtures.Article, AllFields, TestContext.Current.CancellationToken));
 
-            AssertSame(expected, Extractor.ExtractFromBytes(sliceSource.AsMemory(16, Fixtures.Article.Length), AllFields));
-            AssertSame(expected, Extractor.ExtractFromBytes(pooled.AsMemory(0, Fixtures.Article.Length), AllFields));
-            AssertSame(expected, Extractor.ExtractFromBytes(Fixtures.Article.AsMemory(), AllFields));
+            AssertSame(expected, Extractor.ExtractFromBytes(sliceSource.AsMemory(16, Fixtures.Article.Length), AllFields, TestContext.Current.CancellationToken));
+            AssertSame(expected, Extractor.ExtractFromBytes(pooled.AsMemory(0, Fixtures.Article.Length), AllFields, TestContext.Current.CancellationToken));
+            AssertSame(expected, Extractor.ExtractFromBytes(Fixtures.Article.AsMemory(), AllFields, TestContext.Current.CancellationToken));
 
             // The span entry point is the only one that reaches a buffer no memory view can express,
             // and for the memory-backed ones it is the same call one `.Span` away.
-            AssertSame(expected, Extractor.ExtractFromSpan(Fixtures.Article, AllFields));
-            AssertSame(expected, Extractor.ExtractFromSpan(sliceSource.AsSpan(16, Fixtures.Article.Length), AllFields));
-            AssertSame(expected, Extractor.ExtractFromSpan(pooled.AsSpan(0, Fixtures.Article.Length), AllFields));
-            AssertSame(expected, Extractor.ExtractFromSpan(stacked, AllFields));
+            AssertSame(expected, Extractor.ExtractFromSpan(Fixtures.Article, AllFields, TestContext.Current.CancellationToken));
+            AssertSame(expected, Extractor.ExtractFromSpan(sliceSource.AsSpan(16, Fixtures.Article.Length), AllFields, TestContext.Current.CancellationToken));
+            AssertSame(expected, Extractor.ExtractFromSpan(pooled.AsSpan(0, Fixtures.Article.Length), AllFields, TestContext.Current.CancellationToken));
+            AssertSame(expected, Extractor.ExtractFromSpan(stacked, AllFields, TestContext.Current.CancellationToken));
             AssertSame(expected, Extractor.ExtractFromSpan(
                 new ReadOnlySpan<byte>((byte*)buffer.ToPointer(), Fixtures.Article.Length),
-                AllFields));
+                AllFields, TestContext.Current.CancellationToken));
 
             // The string overload is the third path into the same pipeline, and the same text has to
             // come out of it field for field.
-            AssertSame(expected, Extractor.ExtractFromHtml(Fixtures.ArticleHtml, AllFields));
+            AssertSame(expected, Extractor.ExtractFromHtml(Fixtures.ArticleHtml, AllFields, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -65,7 +65,7 @@ public sealed class BytesTests
     [Fact]
     public unsafe void A_Shorter_View_Does_Not_Produce_The_Full_Page()
     {
-        var full = Extractor.ExtractFromBytes(Fixtures.Article, AllFields);
+        var full = Extractor.ExtractFromBytes(Fixtures.Article, AllFields, TestContext.Current.CancellationToken);
 
         // Only the first paragraph is inside this length, and the last paragraph's closing sentence is
         // what a view that read the whole buffer would pick up: it is the marker that separates the
@@ -78,10 +78,10 @@ public sealed class BytesTests
         var buffer = Allocate(Fixtures.Article);
         try
         {
-            var managed = Extractor.ExtractFromBytes(pooled.AsMemory(0, Truncated), AllFields);
+            var managed = Extractor.ExtractFromBytes(pooled.AsMemory(0, Truncated), AllFields, TestContext.Current.CancellationToken);
             var unmanaged = Extractor.ExtractFromSpan(
                 new ReadOnlySpan<byte>((byte*)buffer.ToPointer(), Truncated),
-                AllFields);
+                AllFields, TestContext.Current.CancellationToken);
 
             // The full page carries the marker, so the assertion below is about the length and not
             // about the fixture.
@@ -95,7 +95,7 @@ public sealed class BytesTests
             Assert.Equal(managed.ContentText, unmanaged.ContentText);
             var whole = Extractor.ExtractFromSpan(
                 new ReadOnlySpan<byte>((byte*)buffer.ToPointer(), Fixtures.Article.Length),
-                AllFields);
+                AllFields, TestContext.Current.CancellationToken);
             Assert.Contains(OnlyPastTheLength, whole.ContentText);
             Assert.Equal(full.ContentText, whole.ContentText);
         }
@@ -124,10 +124,10 @@ public sealed class BytesTests
     {
         byte[]? nullArray = null;
 
-        var fromNull = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(nullArray!));
-        var fromDefault = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(default(ReadOnlyMemory<byte>)));
-        var fromEmpty = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(Array.Empty<byte>()));
-        var fromEmptySpan = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromSpan(default(ReadOnlySpan<byte>)));
+        var fromNull = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(nullArray!, null, TestContext.Current.CancellationToken));
+        var fromDefault = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(default(ReadOnlyMemory<byte>), null, TestContext.Current.CancellationToken));
+        var fromEmpty = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(Array.Empty<byte>(), null, TestContext.Current.CancellationToken));
+        var fromEmptySpan = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromSpan(default(ReadOnlySpan<byte>), null, TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromNull.Kind);
         Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromDefault.Kind);
@@ -145,13 +145,13 @@ public sealed class BytesTests
     [Fact]
     public void Html_Path_Is_Text_And_Byte_Path_Is_Bytes()
     {
-        var fromHtml = Extractor.ExtractFromHtml(Fixtures.PdfPrefixedHtml, AllFields);
+        var fromHtml = Extractor.ExtractFromHtml(Fixtures.PdfPrefixedHtml, AllFields, TestContext.Current.CancellationToken);
 
         Assert.Equal("Research results", fromHtml.Metadata!.Title);
         Assert.Contains("The research team published its findings", fromHtml.ContentText);
 
         var bytes = Encoding.UTF8.GetBytes(Fixtures.PdfPrefixedHtml);
-        var fromBytes = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(bytes, AllFields));
+        var fromBytes = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(bytes, AllFields, TestContext.Current.CancellationToken));
         Assert.Equal(TrafilaturaErrorKind.MissingDocument, fromBytes.Kind);
     }
 

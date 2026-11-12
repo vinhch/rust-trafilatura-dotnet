@@ -26,7 +26,7 @@ public sealed class ResponseTests
     public void Response_Is_Read_From_The_Native_Buffer()
     {
         var article = ReadAsACallerWould(Fixtures.Article, AllFields);
-        AssertMatchesTheResponse(article.Response, Extractor.ExtractFromHtml(Fixtures.ArticleHtml, AllFields));
+        AssertMatchesTheResponse(article.Response, Extractor.ExtractFromHtml(Fixtures.ArticleHtml, AllFields, TestContext.Current.CancellationToken));
 
         // U+00E9 is two bytes in the response, so a reader that took one byte per character would
         // fail here rather than on a page whose response is ASCII.
@@ -38,7 +38,7 @@ public sealed class ResponseTests
         var quoted = ReadAsACallerWould(Fixtures.Quoted, AllFields);
         Assert.Contains("said \"the caf\u00E9 stays open\"", quoted.Result.ContentText);
         Assert.True(quoted.Response.AsSpan().IndexOf("\\\""u8) >= 0);
-        AssertMatchesTheResponse(quoted.Response, Extractor.ExtractFromHtml(Fixtures.QuotedHtml, AllFields));
+        AssertMatchesTheResponse(quoted.Response, Extractor.ExtractFromHtml(Fixtures.QuotedHtml, AllFields, TestContext.Current.CancellationToken));
 
         // A page URL is what fills `hostname`, so this response carries a value where every other
         // fixture leaves that member empty: an empty member reads the same whether it was read or
@@ -225,10 +225,10 @@ public sealed class ResponseTests
         for (var attempt = 0; attempt < 100; attempt++)
         {
             var failure = Assert.Throws<TrafilaturaException>(
-                () => Extractor.ExtractFromBytes(emptyPage));
+                () => Extractor.ExtractFromBytes(emptyPage, null, TestContext.Current.CancellationToken));
             Assert.Equal(TrafilaturaErrorKind.MissingDocument, failure.Kind);
 
-            var result = Extractor.ExtractFromBytes(Fixtures.Article, AllFields);
+            var result = Extractor.ExtractFromBytes(Fixtures.Article, AllFields, TestContext.Current.CancellationToken);
             Assert.Equal("Research results", result.Metadata!.Title);
             Assert.NotEmpty(result.ContentText!);
         }
@@ -247,7 +247,7 @@ public sealed class ResponseTests
             BlacklistedAuthors = ["Ada Lovelace"],
             HasEssentialMetadata = true,
             Url = "https://example.org/article",
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result.ContentText);
         Assert.Null(result.Metadata);
@@ -260,7 +260,7 @@ public sealed class ResponseTests
     [Fact]
     public void Comments_Text_Is_Empty_When_Comments_Are_Excluded()
     {
-        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { ExcludeComments = true });
+        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { ExcludeComments = true }, TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Empty, result.CommentsText);
     }

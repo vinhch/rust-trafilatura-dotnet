@@ -14,7 +14,7 @@ public sealed class ErrorTests
     [Fact]
     public void Non_Url_Value_Extracts()
     {
-        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { Url = "not a url" });
+        var result = Extractor.ExtractFromHtml(Fixtures.ArticleHtml, new ExtractionOptions { Url = "not a url" }, TestContext.Current.CancellationToken);
 
         Assert.False(string.IsNullOrEmpty(result.ContentText));
     }
@@ -26,7 +26,7 @@ public sealed class ErrorTests
     [Fact]
     public void EmptyPayload_Throws_MissingDocument()
     {
-        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(ReadOnlyMemory<byte>.Empty));
+        var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(ReadOnlyMemory<byte>.Empty, null, TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.MissingDocument, exception.Kind);
         Assert.Equal("page rejected: empty tree", exception.Message);
@@ -42,7 +42,8 @@ public sealed class ErrorTests
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
             Fixtures.NoDateHtml,
-            new ExtractionOptions { HasEssentialMetadata = true }));
+            new ExtractionOptions { HasEssentialMetadata = true },
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.MissingMetadata, exception.Kind);
         Assert.Equal("""{"missing":["date","url"]}""", exception.ContextJson);
@@ -57,7 +58,8 @@ public sealed class ErrorTests
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(
             Fixtures.Article,
-            new ExtractionOptions { Config = new ExtractionConfig { MinOutputSize = 10000 } }));
+            new ExtractionOptions { Config = new ExtractionConfig { MinOutputSize = 10000 } },
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.OutputTooShort, exception.Kind);
         using var context = JsonDocument.Parse(exception.ContextJson!);
@@ -73,7 +75,8 @@ public sealed class ErrorTests
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromBytes(
             Fixtures.Article,
-            new ExtractionOptions { MaxTreeSize = 1 }));
+            new ExtractionOptions { MaxTreeSize = 1 },
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.OutputTreeTooLong, exception.Kind);
         using var context = JsonDocument.Parse(exception.ContextJson!);
@@ -90,7 +93,8 @@ public sealed class ErrorTests
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
             Fixtures.GermanLocaleHtml,
-            new ExtractionOptions { TargetLanguage = "en" }));
+            new ExtractionOptions { TargetLanguage = "en" },
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.HtmlLanguage, exception.Kind);
     }
@@ -104,7 +108,8 @@ public sealed class ErrorTests
     {
         var exception = Assert.Throws<TrafilaturaException>(() => Extractor.ExtractFromHtml(
             Fixtures.BrokenImageHtml,
-            new ExtractionOptions { IncludeImages = true, Url = "https://example.org/" }));
+            new ExtractionOptions { IncludeImages = true, Url = "https://example.org/" },
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(TrafilaturaErrorKind.InvalidValue, exception.Kind);
     }
@@ -116,7 +121,7 @@ public sealed class ErrorTests
     [Fact]
     public void MalformedJson_Throws_InvalidRequest()
     {
-        var (code, response) = Interop.Extract("{"u8, Fixtures.Article, RawResponse.Read);
+        var (code, response) = Interop.Extract("{"u8, Fixtures.Article, RawResponse.Read, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, code);
         using var document = JsonDocument.Parse(response);
@@ -136,7 +141,7 @@ public sealed class ErrorTests
     {
         var header = Encoding.UTF8.GetBytes(Request.HeaderJson(null).GetRawText());
 
-        var (code, response) = Interop.Extract(header, [], RawResponse.Read);
+        var (code, response) = Interop.Extract(header, [], RawResponse.Read, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, code);
         using var document = JsonDocument.Parse(response);
@@ -247,7 +252,7 @@ public sealed class ErrorTests
 
         // Sequential first: it is the baseline the parallel calls are compared with, and it warms the
         // serializer's caches so the parallel section measures the ABI rather than a first use.
-        var expected = Extractor.ExtractFromBytes(Fixtures.Article, options);
+        var expected = Extractor.ExtractFromBytes(Fixtures.Article, options, TestContext.Current.CancellationToken);
 
         var actual = new ExtractionResult?[callCount];
         Parallel.For(

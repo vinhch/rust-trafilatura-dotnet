@@ -21,7 +21,7 @@ public sealed class ExtractionTests
     [Fact]
     public void Extract_FromBytes_ReturnsTextAndMetadata()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["contentText", "metadata"] });
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["contentText", "metadata"] }, TestContext.Current.CancellationToken);
 
         // Text, not markup: echoing the payload back would still contain "<article" and "<p>".
         Assert.Contains("research team", result.ContentText);

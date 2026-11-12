@@ -18,8 +18,8 @@ public sealed class OptionsTests
     [Fact]
     public void DefaultOptions_Equal_CoreDefaults()
     {
-        var omitted = Extractor.ExtractFromBytes(Fixtures.Article);
-        var explicitDefaults = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions());
+        var omitted = Extractor.ExtractFromBytes(Fixtures.Article, null, TestContext.Current.CancellationToken);
+        var explicitDefaults = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions(), TestContext.Current.CancellationToken);
 
         Assert.Equal(omitted.ContentText, explicitDefaults.ContentText);
         Assert.Equal(omitted.Metadata!.Title, explicitDefaults.Metadata!.Title);
@@ -38,7 +38,7 @@ public sealed class OptionsTests
     [Fact]
     public void Metadata_Date_IsNull_WhenAbsent()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.NoDate, new ExtractionOptions { ResponseFields = ["metadata"] });
+        var result = Extractor.ExtractFromBytes(Fixtures.NoDate, new ExtractionOptions { ResponseFields = ["metadata"] }, TestContext.Current.CancellationToken);
 
         Assert.Null(result.Metadata!.Date);
     }
@@ -51,7 +51,7 @@ public sealed class OptionsTests
     [Fact]
     public void Empty_Categories_And_Tags_Are_The_Shared_Empty_Array()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] });
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] }, TestContext.Current.CancellationToken);
 
         Assert.Same(Array.Empty<string>(), result.Metadata!.Categories);
         Assert.Same(Array.Empty<string>(), result.Metadata.Tags);
@@ -60,8 +60,8 @@ public sealed class OptionsTests
     [Fact]
     public void Extract_FromHtml_Equals_ExtractFromBytes()
     {
-        var fromBytes = Extractor.ExtractFromBytes(Fixtures.ArticleWithSoftHyphens);
-        var fromHtml = Extractor.ExtractFromHtml(Fixtures.ArticleWithSoftHyphensHtml);
+        var fromBytes = Extractor.ExtractFromBytes(Fixtures.ArticleWithSoftHyphens, null, TestContext.Current.CancellationToken);
+        var fromHtml = Extractor.ExtractFromHtml(Fixtures.ArticleWithSoftHyphensHtml, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(fromBytes.ContentText, fromHtml.ContentText);
         Assert.Equal(fromBytes.Metadata!.Title, fromHtml.Metadata!.Title);
@@ -70,7 +70,7 @@ public sealed class OptionsTests
     [Fact]
     public void Metadata_Fields_Are_Populated()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] });
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, new ExtractionOptions { ResponseFields = ["metadata"] }, TestContext.Current.CancellationToken);
         var metadata = result.Metadata!;
 
         Assert.Equal("Research results", metadata.Title);
@@ -86,7 +86,7 @@ public sealed class OptionsTests
     [Fact]
     public void NonUtf8_Bytes_AreDetected()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Windows1252);
+        var result = Extractor.ExtractFromBytes(Fixtures.Windows1252, null, TestContext.Current.CancellationToken);
 
         Assert.Contains("Caf\u00E9 review", result.ContentText);
         Assert.Contains("Z\u00FCrich", result.ContentText);
@@ -102,7 +102,7 @@ public sealed class OptionsTests
             {
                 Url = "https://example.org/article",
                 ResponseFields = ["metadata"],
-            });
+            }, TestContext.Current.CancellationToken);
 
         Assert.Equal("https://example.org/article", result.Metadata!.Url);
     }
@@ -110,9 +110,9 @@ public sealed class OptionsTests
     [Fact]
     public void Gzip_Bytes_Are_Decoded()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Gzip);
+        var result = Extractor.ExtractFromBytes(Fixtures.Gzip, null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(Extractor.ExtractFromBytes(Fixtures.Article).ContentText, result.ContentText);
+        Assert.Equal(Extractor.ExtractFromBytes(Fixtures.Article, null, TestContext.Current.CancellationToken).ContentText, result.ContentText);
     }
 
     /// <summary>
@@ -122,7 +122,7 @@ public sealed class OptionsTests
     [Fact]
     public void Extracted_Text_Is_Text_Not_Markup()
     {
-        var result = Extractor.ExtractFromBytes(Fixtures.Article);
+        var result = Extractor.ExtractFromBytes(Fixtures.Article, null, TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("<article", result.ContentText);
         Assert.DoesNotContain("<p>", result.ContentText);
@@ -258,7 +258,7 @@ public sealed class OptionsTests
         var (code, response) = Interop.Extract(
             Encoding.UTF8.GetBytes("""{"schemaVersion":2,"options":{"url":"https://example.org/article"}}"""),
             Fixtures.Article,
-            RawResponse.Read);
+            RawResponse.Read, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, code);
         using var document = JsonDocument.Parse(response);
