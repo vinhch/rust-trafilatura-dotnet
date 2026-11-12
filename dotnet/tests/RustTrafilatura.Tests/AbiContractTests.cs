@@ -145,4 +145,23 @@ public sealed class AbiContractTests
     /// </summary>
     private static void AssertNamesTheFix(ContractVersionMismatchException mismatch) =>
         Assert.Contains("Install the RustTrafilatura package version", mismatch.Message, StringComparison.Ordinal);
+
+    /// <summary>
+    /// A version document whose root is not an object states nothing: the fields stay unset and the
+    /// document is kept, instead of the read throwing and the first extraction caching that failure.
+    /// </summary>
+    [Theory]
+    [InlineData("""["crate"]""")]
+    [InlineData("null")]
+    [InlineData("\"text\"")]
+    public void Non_Object_Version_Document_States_Nothing(string document)
+    {
+        var version = LibraryContract.ReadVersion(document);
+
+        Assert.Null(version.Abi);
+        Assert.Null(version.SchemaVersion);
+        Assert.Null(version.Crate);
+        Assert.Null(version.Core);
+        Assert.Equal(document, version.Document);
+    }
 }

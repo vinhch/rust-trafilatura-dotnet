@@ -24,7 +24,7 @@ internal static class LibraryContract
     /// The same document, parsed once: the accessor below hands the fields out, and a document that does
     /// not parse states nothing rather than failing, because nothing here is compared.
     /// </summary>
-    private static readonly Lazy<NativeLibraryVersion> ParsedVersionDocument = new(ReadVersion);
+    private static readonly Lazy<NativeLibraryVersion> ParsedVersionDocument = new(() => ReadVersion(VersionDocument.Value));
 
     /// <summary>
     /// The one contract comparison per process: `Lazy` runs the factory at most once, so no extraction
@@ -41,10 +41,9 @@ internal static class LibraryContract
     /// that omits a key: this hands out the library's claim, and the comparison that can fail is
     /// <see cref="Check(string)"/>.
     /// </summary>
-    private static NativeLibraryVersion ReadVersion()
+    /// <remarks>Internal, taking the document as an argument, so a root that is not an object is assertable without a native library that returns one.</remarks>
+    internal static NativeLibraryVersion ReadVersion(string document)
     {
-        var document = VersionDocument.Value;
-
         try
         {
             using var parsed = JsonDocument.Parse(document);
