@@ -95,7 +95,7 @@ fn main() {
         payload.len(),
         ITERATIONS / ROUNDS
     );
-    println!("bench: profile bench (cargo bench), which inherits release and lto = \"thin\"");
+    println!("bench: profile bench (cargo bench), which inherits release (lto = \"fat\", codegen-units = 1)");
     println!("bench: options (a) core            Options::new().with_metadata(true)");
     println!(
         "bench: options (b) roundtrip       {} responseFields = contentText, commentsText, metadata (default)",

@@ -32,7 +32,9 @@ default = ["mimalloc"]
 test-hooks = []
 
 [profile.release]
-lto = "thin"
+# Fat LTO with one codegen unit shrinks the native library: 5,308,928 bytes staged on win-x64 with thin LTO, 4,953,600 with this profile.
+lto = "fat"
+codegen-units = 1
 # The cdylib crosses to .NET through the C ABI by ordinal, so the symbol table carries nothing a
 # consumer needs; stripping it drops ~1.5-2 MB per RID.
 strip = true

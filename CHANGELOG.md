@@ -2,6 +2,12 @@
 
 All notable changes to this package are recorded here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The package follows [Semantic Versioning](https://semver.org/) loosely: a release that changes behavior a caller can see says so under Breaking.
 
+## [Unreleased]
+
+### Changed
+
+The native library is built with fat LTO and one codegen unit: about 6.7 percent smaller on win-x64, round-trip bench within noise (medians in the commit).
+
 ## [0.3.0] - 2026-11-12
 
 The package binds the `trafilatura-rust` 0.2.0 core instead of `rust-trafilatura` 2.2.8. Extraction results follow the new core, so a page can extract differently from 0.2.x even where the API is unchanged.
