@@ -7,11 +7,12 @@ namespace RustTrafilatura.Tests;
 /// documents pass, which are reported as a mismatch, and what a caller reads off the exception.
 /// </summary>
 /// <remarks>
-/// The document cases drive <see cref="LibraryContract.Check(string)"/>, which takes the document as
-/// text; the failing-read case drives <see cref="LibraryContract.ReadDocument(int, string)"/>, which
+/// The document cases drive <see cref="LibraryContract.Check(string)"/> and
+/// <see cref="LibraryContract.ReadVersion(string)"/>, which take the document as text; the failing-read
+/// case drives <see cref="LibraryContract.ReadDocument(int, string)"/>, which
 /// is where a `rt_version` call's code becomes a document, because a read that fails never reaches the
 /// comparison. The alternative - a native library built for a different ABI, or one whose `rt_version`
-/// fails - is not something a test can load, and the first-use path throws exactly what these two
+/// fails - is not something a test can load, and the first-use path throws exactly what these
 /// methods return or throw.
 /// </remarks>
 public sealed class AbiContractTests
@@ -140,13 +141,6 @@ public sealed class AbiContractTests
     }
 
     /// <summary>
-    /// The fix, because the message is the only part of the failure a caller may log: it has to name
-    /// what to install, not only what differed.
-    /// </summary>
-    private static void AssertNamesTheFix(ContractVersionMismatchException mismatch) =>
-        Assert.Contains("Install the RustTrafilatura package version", mismatch.Message, StringComparison.Ordinal);
-
-    /// <summary>
     /// A version document whose root is not an object states nothing: the fields stay unset and the
     /// document is kept, instead of the read throwing and the first extraction caching that failure.
     /// </summary>
@@ -164,4 +158,11 @@ public sealed class AbiContractTests
         Assert.Null(version.Core);
         Assert.Equal(document, version.Document);
     }
+
+    /// <summary>
+    /// The fix, because the message is the only part of the failure a caller may log: it has to name
+    /// what to install, not only what differed.
+    /// </summary>
+    private static void AssertNamesTheFix(ContractVersionMismatchException mismatch) =>
+        Assert.Contains("Install the RustTrafilatura package version", mismatch.Message, StringComparison.Ordinal);
 }

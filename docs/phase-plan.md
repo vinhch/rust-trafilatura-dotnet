@@ -52,4 +52,4 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 6 |
 | F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
 | F-20 | `BlacklistedUrl` is declared but never raised: the wrapper never sets the core's `url_blacklist`. Add an `ExtractionOptions` member for it if a consumer needs it, or drop the kind from the table. | A consumer asks |
-| F-21 | The fat-LTO profile is measured on win-x64 only. Run a `workflow_dispatch` rehearsal of `.github/workflows/release.yml` to prove the four non-host RID builds and the five-RID pack under it, and compare their library sizes with `docs/release-evidence.md`. | The next release |
+| F-21 | The fat-LTO profile is measured on win-x64 only. Run a `workflow_dispatch` rehearsal of `.github/workflows/release.yml` to prove the four non-host RID builds and the five-RID pack under it, and record the library size per RID. | The next release |
