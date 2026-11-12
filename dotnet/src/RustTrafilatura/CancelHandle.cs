@@ -32,6 +32,9 @@ internal sealed class CancelHandle : SafeHandle
     /// <summary>Test seam, null in production: runs inside <see cref="Dispose(bool)"/>, after the handle is released.</summary>
     internal static Action? AfterRelease { get; set; }
 
+    /// <summary>Test seam, null in production: replaces the native `rt_cancel_new` call in <see cref="Create"/>.</summary>
+    internal static Func<CancelHandle>? NativeCreate { get; set; }
+
     /// <summary>
     /// Public although the type is internal: the marshaller that builds a returned handle keeps only a
     /// public parameterless constructor through Native AOT trimming.
@@ -47,7 +50,7 @@ internal sealed class CancelHandle : SafeHandle
     /// <exception cref="InvalidOperationException">The native side returned null, so no token exists and the call cannot be cancelled.</exception>
     internal static CancelHandle Create()
     {
-        var created = Interop.RtCancelNew();
+        var created = NativeCreate?.Invoke() ?? Interop.RtCancelNew();
         if (created.IsInvalid)
         {
             throw new InvalidOperationException("The native library could not create a cancel handle.");

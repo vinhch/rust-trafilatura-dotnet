@@ -83,6 +83,25 @@ public sealed class CancellationTests
     }
 
     [Fact]
+    public void Create_Throws_When_Native_Returns_A_Null_Handle()
+    {
+        var createdBefore = CancelHandle.CreatedCount;
+        var liveBefore = CancelHandle.LiveCount;
+        try
+        {
+            CancelHandle.NativeCreate = () => new CancelHandle();
+            Assert.Throws<InvalidOperationException>(() => CancelHandle.Create());
+        }
+        finally
+        {
+            CancelHandle.NativeCreate = null;
+        }
+
+        Assert.Equal(createdBefore, CancelHandle.CreatedCount);
+        Assert.Equal(liveBefore, CancelHandle.LiveCount);
+    }
+
+    [Fact]
     public void ExtractFromHtml_Null_Html_Is_An_Argument_Error_Even_When_Cancelled()
     {
         using var cts = new CancellationTokenSource();
