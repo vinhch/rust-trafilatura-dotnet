@@ -28,16 +28,21 @@ if ($IsWindows) {
     $bash = $null
     $tried = @()
     foreach ($gitPath in $gitPaths) {
+        $candidate = $null
         $LASTEXITCODE = 0
-        try { $execPath = (& $gitPath --exec-path 2>$null | Select-Object -First 1) } catch { $execPath = $null }
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($execPath)) {
+        try {
+            # All output is captured: stopping the pipeline at the first line would skip the exit code.
+            $execPath = @(& $gitPath --exec-path 2>$null) | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($execPath)) { throw 'no exec path' }
+            $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $execPath))
+            $candidate = Join-Path $root 'bin\bash.exe'
+            $tried += "$gitPath -> $execPath"
+        }
+        catch {
             $tried += "$gitPath -> failed"
             continue
         }
-        $tried += "$gitPath -> $execPath"
-        $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $execPath))
-        $candidate = Join-Path $root 'bin\bash.exe'
-        if ($root -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
             $bash = $candidate
             break
         }
