@@ -20,7 +20,6 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 5 | 5. Hardening: F-14, F-17, F-18 | Not started | Each of F-14, F-17 and F-18 has its test and the docs check passes | None |
 | 6 | 6. Performance: F-1, F-9 | Not started | The bench decides each of F-1 and F-9 and the numbers are recorded | None |
 
 ### Shipped phases
@@ -31,6 +30,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 | 2. Engine swap and error mapping on trafilatura-rust 0.2.0 from crates.io | `b0eb0e4..c0b8b41` and the phase-closing commit |
 | 3. Cancellation: `rt_cancel_new`, `rt_cancel`, `rt_cancel_free`, the `rt_extract` cancel parameter, `CancellationToken` on every extract method, `OperationCanceledException` | `74c968d..7abf8fb` and the phase-closing commit |
 | 4. Release: CI, `deny.toml`, notices, Dependabot, README, `docs/` (release evidence, research pages), version 0.3.0, five RIDs packed and published | `698cfbf..9e346e5`, tag `v0.3.0` and the phase-closing commit |
+| 5. Hardening: F-14, F-17, F-18; unit-test layout; fat-LTO release profile. F-18 is verified by the manual decoy scenario recorded in its commit, as the repo has no script test harness | `80f1120..9244db5` and the phase-closing commit |
 
 ## Open items register
 
@@ -51,7 +51,4 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-7 | `DuplicateBody` is unreachable from `bare_extraction`: duplicate detection needs a `DedupCache` the binding does not pass. | A consumer asks for cross-call dedup |
 | F-9 | On .NET 10 macOS the worker is not needed (1.5 MiB default). A check on the .NET version avoids one thread spawn per call there; measure the cost before adding it. | Phase 6 |
 | F-12 | The stack claims and the `libc.so.6` import cover glibc only; musl is not a packed RID. Revisit when a musl RID is packed. | A musl RID is packed |
-| F-14 | The null-handle branch of `CancelHandle.Create()` has no test: it needs the native `rt_cancel_new` to fail. Add the test once the native side can be forced to fail. | Phase 5 |
-| F-17 | `Failures.Read` throws `InvalidOperationException` when the response root is a JSON array. Make it a clear error for a malformed response. Predates phase 3. | Phase 5 |
-| F-18 | `scripts/docs-check.ps1` walks up from each `git.exe` to the first `bin\bash.exe`, which can find an unrelated `bash.exe` above a shim install. Bound the search to the install's own `bin`. | Phase 5 |
 | F-20 | `BlacklistedUrl` is declared but never raised: the wrapper never sets the core's `url_blacklist`. Add an `ExtractionOptions` member for it if a consumer needs it, or drop the kind from the table. | A consumer asks |
