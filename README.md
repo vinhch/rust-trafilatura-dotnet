@@ -143,7 +143,7 @@ Note: a member the request did not name is null; one it named that the page has 
 | `InvalidValue` | the core rejected a value, such as an image URL it cannot join | |
 | `InvalidRequest` | the request header is malformed: an unknown key, an unknown or empty `ResponseFields`, an unknown enum spelling | |
 | `Panic` | a Rust panic was caught at the ABI boundary | |
-| `Unknown` | the library reported a kind this client version does not recognise | |
+| `Unknown` | the library reported a kind this client version does not recognise, or a response with no readable error object | |
 
 A cancelled call throws `OperationCanceledException`, not `TrafilaturaException`, so it has no `Kind`.
 

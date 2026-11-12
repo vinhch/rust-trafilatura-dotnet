@@ -8,6 +8,10 @@ All notable changes to this package are recorded here, following [Keep a Changel
 
 The native library is built with fat LTO and one codegen unit: about 6.7 percent smaller on win-x64, round-trip bench within noise (medians in the commit).
 
+### Fixed
+
+A failure response whose JSON root is not an object raises `TrafilaturaException` with kind `Unknown` instead of `InvalidOperationException`; a version document that is not an object no longer makes `Extractor.LibraryVersion` throw `InvalidOperationException`.
+
 ## [0.3.0] - 2026-11-12
 
 The package binds the `trafilatura-rust` 0.2.0 core instead of `rust-trafilatura` 2.2.8. Extraction results follow the new core, so a page can extract differently from 0.2.x even where the API is unchanged.

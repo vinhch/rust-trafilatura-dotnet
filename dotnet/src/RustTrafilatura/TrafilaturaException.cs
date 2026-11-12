@@ -34,7 +34,7 @@ public enum TrafilaturaErrorKind
     InvalidRequest,
     Panic,
 
-    /// <summary>A kind the native library reported and this client version does not recognise.</summary>
+    /// <summary>A kind the native library reported and this client version does not recognise, or a response with no readable error object.</summary>
     Unknown,
 }
 

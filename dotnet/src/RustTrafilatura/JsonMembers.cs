@@ -8,11 +8,13 @@ namespace RustTrafilatura;
 /// </summary>
 internal static class JsonMembers
 {
-    /// <summary>A string member, or null when it is absent or is not a string.</summary>
+    /// <summary>A string member of a JSON object, or null when the parent is not an object, the member is absent, or it is not a string.</summary>
     internal static string? Text(JsonElement parent, string name) =>
-        parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        parent.ValueKind == JsonValueKind.Object
+            && parent.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
 
     /// <summary>
     /// An integer member of a JSON object, or null when the parent is not an object, the member is

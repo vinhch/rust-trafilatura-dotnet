@@ -22,7 +22,10 @@ internal static class Failures
         try
         {
             using var document = JsonDocument.Parse(response);
-            if (!document.RootElement.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("error", out var error)
+                || error.ValueKind != JsonValueKind.Object)
             {
                 return new TrafilaturaException(
                     TrafilaturaErrorKind.Unknown,

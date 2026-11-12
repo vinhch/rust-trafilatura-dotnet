@@ -174,6 +174,28 @@ public sealed class ErrorTests
         Assert.IsAssignableFrom<JsonException>(Failures.Read(1, "not json").InnerException);
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[{\"error\":{\"kind\":\"Panic\"}}]")]
+    [InlineData("\"text\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void Non_Object_Response_Root_Is_Unknown(string response)
+    {
+        var exception = Failures.Read(1, response);
+
+        Assert.Equal(TrafilaturaErrorKind.Unknown, exception.Kind);
+        Assert.Contains("without an error object", exception.Message);
+    }
+
+    [Fact]
+    public void Json_Text_On_A_Non_Object_Is_Null()
+    {
+        using var document = JsonDocument.Parse("""["crate"]""");
+
+        Assert.Null(JsonMembers.Text(document.RootElement, "crate"));
+    }
+
     /// <summary>
     /// The enum is the wire contract's kind table: one member per row of the README error table, that is
     /// the core kinds from <c>rust/src/contract.rs</c> <c>error_kind</c>, <c>InvalidRequest</c> and
