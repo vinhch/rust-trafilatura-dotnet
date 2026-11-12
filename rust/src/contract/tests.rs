@@ -1,0 +1,399 @@
+use super::*;
+use serde_json::json;
+
+#[test]
+fn default_response_fields_are_text_comments_and_metadata() {
+    let request = parse_request(br#"{}"#).unwrap();
+    assert_eq!(
+        request.fields,
+        vec![
+            ResponseField::ContentText,
+            ResponseField::CommentsText,
+            ResponseField::Metadata
+        ]
+    );
+}
+
+#[test]
+fn non_object_header_is_invalid_request() {
+    for header in [&b"[]"[..], b"\"x\"", b"null", b"123"] {
+        assert!(matches!(
+            parse_request(header),
+            Err(RequestError::InvalidRequest(_))
+        ));
+    }
+}
+
+#[test]
+fn request_errors_name_their_cause() {
+    assert!(matches!(
+        parse_request(b"{"),
+        Err(RequestError::InvalidRequest(reason)) if !reason.is_empty()
+    ));
+    assert!(matches!(
+        parse_request(&[0xff, 0xfe]),
+        Err(RequestError::InvalidRequest(reason)) if reason.contains("UTF-8")
+    ));
+}
+
+#[test]
+fn missing_empty_and_malformed_headers_are_invalid_request() {
+    for header in [
+        &b""[..],
+        &b"{} trailing"[..],
+        &b"{\"schemaVersion\":}"[..],
+        &b"{\"url\":5}"[..],
+        &b"{\"options\":7}"[..],
+        &b"{\"options\":{\"focus\":\"unknown\"}}"[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{header:?} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn unknown_key_at_each_level_is_rejected() {
+    for (key, header) in [
+        ("htmlDate", &br#"{"htmlDate":"2026-01-01"}"#[..]),
+        (
+            "unknownOption",
+            &br#"{"options":{"unknownOption":true}}"#[..],
+        ),
+        (
+            "unknownConfigKey",
+            &br#"{"options":{"config":{"unknownConfigKey":1}}}"#[..],
+        ),
+    ] {
+        match parse_request(header) {
+            Err(RequestError::InvalidRequest(reason)) => {
+                assert!(reason.contains(key), "{reason:?} must name {key:?}")
+            }
+            other => panic!("{header:?} must be an InvalidRequest, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn payload_is_never_base64() {
+    for key in ["htmlBase64", "html"] {
+        let header = format!(r#"{{"{key}":"PGh0bWw+"}}"#);
+        match parse_request(header.as_bytes()) {
+            Err(RequestError::InvalidRequest(reason)) => {
+                assert!(reason.contains(key), "{reason:?} must name {key:?}")
+            }
+            other => panic!("{header} must be an InvalidRequest, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn schema_version_other_than_two_is_rejected() {
+    assert!(parse_request(br#"{"schemaVersion":2}"#).is_ok());
+    for header in [
+        &br#"{"schemaVersion":0}"#[..],
+        &br#"{"schemaVersion":3}"#[..],
+        &br#"{"schemaVersion":"2"}"#[..],
+        &br#"{"schemaVersion":3.0}"#[..],
+        &br#"{"schemaVersion":-1}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{header:?} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn unknown_or_empty_response_fields_is_rejected() {
+    for header in [
+        &br#"{"responseFields":[]}"#[..],
+        &br#"{"responseFields":["contentText","markdown"]}"#[..],
+        &br#"{"responseFields":["contentText",3]}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{header:?} must be rejected"
+        );
+    }
+    // The two causes do not read the same way: the reason names the entry it refused, so a
+    // caller that misspelled a field is told which one, and an empty list is told what it is.
+    assert!(matches!(
+        parse_request(br#"{"responseFields":["markdown"]}"#),
+        Err(RequestError::InvalidRequest(reason)) if reason.contains("markdown")
+    ));
+    assert!(matches!(
+        parse_request(br#"{"responseFields":[]}"#),
+        Err(RequestError::InvalidRequest(reason)) if reason.contains("must not be empty")
+    ));
+    let request =
+        parse_request(br#"{"responseFields":["metadata","commentsText","contentText"]}"#).unwrap();
+    assert_eq!(
+        request.fields,
+        vec![
+            ResponseField::Metadata,
+            ResponseField::CommentsText,
+            ResponseField::ContentText
+        ]
+    );
+}
+
+#[test]
+fn html_response_fields_are_unknown() {
+    for header in [
+        &br#"{"responseFields":["contentHtml"]}"#[..],
+        &br#"{"responseFields":["commentsHtml"]}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{} must be an InvalidRequest",
+            String::from_utf8_lossy(header)
+        );
+    }
+}
+
+#[test]
+fn payload_text_selects_the_path_only_when_true() {
+    let invalid = [0xff, 0xfe];
+    for header in [
+        &br#"{}"#[..],
+        br#"{"payloadText":false}"#,
+        br#"{"payloadText":null}"#,
+    ] {
+        let request = parse_request(header).unwrap();
+        assert!(
+            matches!(payload(&request.header, &invalid), Ok(Payload::Bytes(bytes)) if bytes == invalid),
+            "{header:?} must keep the byte path, whatever the bytes are"
+        );
+    }
+    let request = parse_request(br#"{"payloadText":true}"#).unwrap();
+    assert!(matches!(
+        payload(&request.header, b"<p>x</p>"),
+        Ok(Payload::Text("<p>x</p>"))
+    ));
+}
+
+#[test]
+fn payload_text_rejects_invalid_utf8_without_echoing_it() {
+    let request = parse_request(br#"{"payloadText":true}"#).unwrap();
+    assert!(matches!(
+        payload(&request.header, &[0xff, 0xfe]),
+        Err(RequestError::InvalidRequest(reason))
+            if reason == "payloadText is set but the payload is not valid UTF-8"
+    ));
+}
+
+#[test]
+fn non_boolean_payload_text_is_invalid_request() {
+    for header in [
+        &br#"{"payloadText":"true"}"#[..],
+        &br#"{"payloadText":1}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{header:?} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn empty_url_means_no_url() {
+    let request = parse_request(br#"{"url":""}"#).unwrap();
+    assert_eq!(request.header.url.as_deref(), Some(""));
+}
+
+#[test]
+fn options_round_trip_every_wire_key() {
+    let header = br#"{
+        "schemaVersion": 2,
+        "url": "https://example.org/article",
+        "options": {
+            "targetLanguage": "en",
+            "focus": "favorRecall",
+            "excludeComments": true,
+            "excludeTables": true,
+            "includeImages": true,
+            "includeLinks": true,
+            "blacklistedAuthors": ["a", "b"],
+            "hasEssentialMetadata": true,
+            "maxTreeSize": 1050,
+            "htmlDateMode": "extensive",
+            "config": {
+                "minExtractedSize": 300,
+                "minOutputSize": 4,
+                "minOutputCommentSize": 5
+            }
+        }
+    }"#;
+    let request = parse_request(header).unwrap();
+    assert_eq!(request.header.schema_version, Some(SCHEMA_VERSION));
+    let options = request.header.options.unwrap();
+    assert_eq!(options.target_language.as_deref(), Some("en"));
+    assert_eq!(options.focus, Some(FocusJson::FavorRecall));
+    assert_eq!(options.exclude_comments, Some(true));
+    assert_eq!(options.exclude_tables, Some(true));
+    assert_eq!(options.include_images, Some(true));
+    assert_eq!(options.include_links, Some(true));
+    assert_eq!(
+        options.blacklisted_authors,
+        Some(vec!["a".to_owned(), "b".to_owned()])
+    );
+    assert_eq!(options.has_essential_metadata, Some(true));
+    assert_eq!(options.max_tree_size, Some(1050));
+    assert_eq!(options.html_date_mode, Some(HtmlDateModeJson::Extensive));
+    let config = options.config.unwrap();
+    assert_eq!(config.min_extracted_size, Some(300));
+    assert_eq!(config.min_output_size, Some(4));
+    assert_eq!(config.min_output_comment_size, Some(5));
+}
+
+#[test]
+fn removed_option_keys_are_unknown() {
+    for header in [
+        &br#"{"inputEncoding":"utf-8"}"#[..],
+        &br#"{"options":{"inputEncoding":"windows-1252"}}"#[..],
+        &br#"{"options":{"enableFallback":true}}"#[..],
+        &br#"{"options":{"deduplicate":true}}"#[..],
+        &br#"{"options":{"pruneSelector":"div"}}"#[..],
+        &br#"{"options":{"htmlDateMode":"disabled"}}"#[..],
+        &br#"{"options":{"config":{"cacheSize":1}}}"#[..],
+        &br#"{"options":{"config":{"maxDuplicateCount":1}}}"#[..],
+        &br#"{"options":{"config":{"minDuplicateCheckSize":1}}}"#[..],
+        &br#"{"options":{"config":{"minExtractedCommentSize":1}}}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{} must be an InvalidRequest",
+            String::from_utf8_lossy(header)
+        );
+    }
+}
+
+#[test]
+fn url_is_rejected_inside_options() {
+    assert!(matches!(
+        parse_request(br#"{"options":{"url":"https://example.org/a"}}"#),
+        Err(RequestError::InvalidRequest(reason)) if reason.contains("url")
+    ));
+}
+
+#[test]
+fn focus_and_html_date_mode_reject_unknown_spellings() {
+    for header in [
+        &br#"{"options":{"focus":"favor_recall"}}"#[..],
+        &br#"{"options":{"focus":"recall"}}"#[..],
+        &br#"{"options":{"htmlDateMode":"defaultMode"}}"#[..],
+        &br#"{"options":{"htmlDateMode":"none"}}"#[..],
+    ] {
+        assert!(
+            matches!(parse_request(header), Err(RequestError::InvalidRequest(_))),
+            "{header:?} must be rejected"
+        );
+    }
+    assert_eq!(
+        parse_request(br#"{"options":{"focus":"balanced","htmlDateMode":"fast"}}"#)
+            .unwrap()
+            .header
+            .options
+            .unwrap()
+            .focus,
+        Some(FocusJson::Balanced)
+    );
+}
+
+#[test]
+fn time_budget_key_is_an_unknown_header_key() {
+    assert!(matches!(
+        parse_request(br#"{"timeBudgetMs":100}"#),
+        Err(RequestError::InvalidRequest(_))
+    ));
+}
+
+#[test]
+fn error_kind_covers_every_core_variant() {
+    let cases = [
+        (
+            ExtractError::Rejected(Rejection::EmptyTree),
+            "MissingDocument",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::WrongHtmlLang),
+            "HtmlLanguage",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::WrongLanguage),
+            "WrongLanguage",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::Duplicate),
+            "DuplicateBody",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::BlacklistedUrl),
+            "BlacklistedUrl",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::InvalidValue),
+            "InvalidValue",
+            None,
+        ),
+        (
+            ExtractError::Rejected(Rejection::TooShort {
+                text_chars: 3,
+                comments_chars: 4,
+            }),
+            "OutputTooShort",
+            Some(json!({"textChars": 3, "commentsChars": 4})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxTreeSize {
+                children: 9,
+            })),
+            "OutputTreeTooLong",
+            Some(json!({"limit": "maxTreeSize", "children": 9})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes)),
+            "OutputTreeTooLong",
+            Some(json!({"limit": "maxNodes"})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes)),
+            "OutputTreeTooLong",
+            Some(json!({"limit": "tagAttributes"})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TableCells)),
+            "OutputTreeTooLong",
+            Some(json!({"limit": "tableCells"})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxInputBytes)),
+            "InputTooLarge",
+            Some(json!({"limit": "maxInputBytes"})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxFileSize)),
+            "InputTooLarge",
+            Some(json!({"limit": "maxFileSize"})),
+        ),
+        (
+            ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::JsonSize)),
+            "InputTooLarge",
+            Some(json!({"limit": "jsonSize"})),
+        ),
+        (ExtractError::Cancelled, "Cancelled", None),
+        (ExtractError::DeadlineExceeded, "Unknown", None),
+    ];
+    for (error, kind, context) in cases {
+        let (actual_kind, actual_context) = error_kind(&error);
+        assert_eq!(actual_kind, kind, "{error:?}");
+        assert_eq!(actual_context, context, "{error:?}");
+    }
+}
