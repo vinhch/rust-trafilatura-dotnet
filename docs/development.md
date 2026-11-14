@@ -67,8 +67,8 @@ RIDs to be staged unless given `--allow-partial`, and refuses a staged library t
 
 ## CI
 
-Actions are pinned to commit SHAs, and `.github/dependabot.yml` moves them, except the Rust toolchain
-action, whose pin is a branch tip Dependabot cannot move.
+Actions are pinned to commit SHAs, and `.github/dependabot.yml` moves them. The Rust version is not an
+action pin: every step of the dtolnay/rust-toolchain action passes it as `toolchain:`, equal to `rust-version` in `rust/Cargo.toml`.
 
 | Workflow | Trigger | Runs |
 | --- | --- | --- |
