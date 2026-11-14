@@ -17,6 +17,7 @@ How to build, test, benchmark and release-check this repository, and what CI run
 | clang with the zlib headers, or the MSVC build tools | any | publishing the AOT consumer; from a Bash shell on Windows, `C:\Program Files (x86)\Microsoft Visual Studio\Installer` (where `vswhere.exe` lives) must be on `PATH`, or the publish fails with MSB3073 |
 
 The SDK is pinned in `global.json`, which also opts the test projects into Microsoft.Testing.Platform.
+`Microsoft.SourceLink.GitHub` stays below 11 while `net8.0` is a target; `DependencyPinTests` fails otherwise.
 
 ## Scripts
 

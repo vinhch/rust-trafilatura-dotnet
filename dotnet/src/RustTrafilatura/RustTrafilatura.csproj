@@ -58,7 +58,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="11.0.100" PrivateAssets="all" />
+    <!-- Stays below 11 while net8.0 is a target: 11.x pulls System.IO.Hashing 11, which does not support the
+         net8.0 asset. Dependabot ignores its majors; DependencyPinTests guards it. -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.404" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

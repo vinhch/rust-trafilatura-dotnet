@@ -1,6 +1,8 @@
 # Version updates for the three ecosystems this repository depends on. Actions are pinned to a
 # commit SHA in .github/workflows, which is why this file exists: Dependabot is what moves them.
 # Repository settings, not expressible here, hold Dependabot alerts and security updates.
+# A dependency joins the first group whose patterns match it, so a lockstep group is listed above
+# the catch-all and the catch-all excludes its members: the grouping does not rest on ordering alone.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -10,16 +12,22 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
+      # `trafilatura-rust` is pinned exactly and is pre-1.0, where a minor bump may break the API. It gets
+      # its own pull request so a breaking core release cannot hold back the other updates, and merging it
+      # needs the steps of the "Core dependency bump" row in AGENTS.md, not a routine merge.
+      trafilatura-core:
+        patterns:
+          - trafilatura-rust
       # One pull request per ecosystem for the updates that cannot change behaviour on their own;
       # a major bump still arrives on its own so it is read as the deliberate release act it is.
       cargo-minor-and-patch:
         patterns:
           - '*'
+        exclude-patterns:
+          - trafilatura-rust
         update-types:
           - minor
           - patch
-    # `trafilatura-rust` is covered on purpose by the pattern above. Its pin is exact, so merging
-    # that bump also needs the steps of the "Core dependency bump" row in AGENTS.md, not a routine merge.
 
   - package-ecosystem: nuget
     directory: /dotnet
@@ -27,10 +35,24 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # SourceLink stays below 11 while net8.0 is a target framework: 11.x pulls System.IO.Hashing 11,
+    # which does not support the net8.0 asset. Drop this rule and the cap in DependencyPinTests once
+    # net8.0 leaves <TargetFrameworks> in dotnet/Directory.Build.props.
+    ignore:
+      - dependency-name: Microsoft.SourceLink.GitHub
+        update-types:
+          - version-update:semver-major
     groups:
+      # BenchmarkDotNet is 0.x, where a minor bump may break the benchmark project and would fail the
+      # shared pull request.
+      benchmarkdotnet:
+        patterns:
+          - BenchmarkDotNet*
       nuget-minor-and-patch:
         patterns:
           - '*'
+        exclude-patterns:
+          - BenchmarkDotNet*
         update-types:
           - minor
           - patch
