@@ -9,7 +9,6 @@ jobs:
     name: test (${{ matrix.os }})
     permissions:
       contents: read
-      checks: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,11 +47,13 @@ jobs:
         if: ${{ !cancelled() }}
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
         with:
-          # `java-junit` is the parser for the format, not for a producer: both reporters below write it.
-          # A fork's read-only token cannot create a check run.
+          # `java-junit` is the parser for the format, not for a producer: nextest and xunit both write it.
+          # The report goes to the job summary, not a check run, so the job needs no checks: write. Past
+          # GitHub's 1 MiB summary cap the action lists failed tests only, then trims; the artifact keeps all.
           name: test report (${{ matrix.os }})
           path: artifacts/test-results/rust/*.xml,artifacts/test-results/dotnet/*.xml
           reporter: java-junit
+          use-actions-summary: true
 
   # Ubuntu's case-sensitive filesystem fails a wrong-case path that a Windows checkout would accept.
   docs:

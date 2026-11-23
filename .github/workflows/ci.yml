@@ -15,5 +15,4 @@ jobs:
     name: verify
     permissions:
       contents: read
-      checks: write
     uses: ./.github/workflows/_ci.yml
